@@ -33,6 +33,8 @@ function setPlayerIcon(icon: HTMLElement, seat: Seat, avatar?: string) {
 }
 
 function start(scene: ReturnType<typeof makeScene>) {
+  const game = get('game');
+  const intro = get('intro');
   const timer = get('timer');
   const score = get('score');
   const stroke = get('stroke');
@@ -51,14 +53,14 @@ function start(scene: ReturnType<typeof makeScene>) {
   const myScore = get('my-score');
   const rivalScore = get('rival-score');
   if (platformMatch) {
-    get('game').classList.add('platform-match');
+    game.classList.add('platform-match');
     get('lobby-title').textContent = 'Naka Lite match';
     get('lobby-close').textContent = 'Back to lobby';
     get('waiting-copy').textContent = 'The round starts when both players join.';
   }
   const audio = makeGolfAudio(get<HTMLButtonElement>('sound-toggle'));
   for (const gesture of ['click', 'pointerdown', 'touchstart', 'pointerup', 'keydown']) {
-    get('game').addEventListener(gesture, audio.unlock, { capture: true, passive: true });
+    game.addEventListener(gesture, audio.unlock, { capture: true, passive: true });
   }
 
   let ball = createBall();
@@ -72,6 +74,7 @@ function start(scene: ReturnType<typeof makeScene>) {
   const picker = get<HTMLSelectElement>('practice-hole');
   picker.replaceChildren(...COURSES.map((course, index) => new Option(`Practice ${index + 1}`, String(index))));
   get('hole-count').textContent = String(COURSES.length);
+  get('intro-hole-count').textContent = String(COURSES.length);
   const turnover = get('turnover');
   let hole = 0;
   let lie: Point = { ...ball };
@@ -87,7 +90,7 @@ function start(scene: ReturnType<typeof makeScene>) {
   let accumulator = 0;
   let displayedBall: Point = { ...ball };
   let displayedRival: Point | null = null;
-  const ready = () => !lobby.open && !connecting && !finished && !ball.sunk && !moving(ball)
+  const ready = () => intro.hidden && !lobby.open && !connecting && !finished && !ball.sunk && !moving(ball)
     && (!room || (connected && room.phase === 'playing' && performance.now() >= pendingShotUntil
       && room.players.find((p) => p.seat === seat)?.score === null));
 
@@ -103,6 +106,14 @@ function start(scene: ReturnType<typeof makeScene>) {
       cancelAim();
       lobby.showModal();
     }
+  }
+
+  function setIntro(visible: boolean) {
+    intro.hidden = !visible;
+    canvas.inert = visible;
+    game.classList.toggle('intro-open', visible);
+    get('lobby-close').textContent = visible ? 'Back to menu' : 'Back to practice';
+    scene.setIntroView(visible);
   }
 
   function cue(kind: Burst, point: Point, player: Seat) {
@@ -180,7 +191,8 @@ function start(scene: ReturnType<typeof makeScene>) {
     updateRoomUI();
     lobbyStatus.textContent = '';
     if (lobby.open) lobby.close();
-    canvas.focus({ preventScroll: true });
+    if (intro.hidden) canvas.focus({ preventScroll: true });
+    else get('intro-friend').focus({ preventScroll: true });
   }
 
   function updateRoomUI() {
@@ -293,6 +305,7 @@ function start(scene: ReturnType<typeof makeScene>) {
         lobbyStatus.textContent = !platformMatch && state.players.length === 2 ? 'Waiting for your friend to reconnect…' : '';
         showLobby();
       } else {
+        if (!intro.hidden) setIntro(false);
         if (lobby.open) {
           lobby.close();
           canvas.focus({ preventScroll: true });
@@ -338,6 +351,12 @@ function start(scene: ReturnType<typeof makeScene>) {
     },
   });
 
+  get('intro-practice').addEventListener('click', () => {
+    setIntro(false);
+    resetPractice();
+    canvas.focus({ preventScroll: true });
+  });
+  get('intro-friend').addEventListener('click', showLobby);
   picker.addEventListener('change', () => {
     if (room) return;
     resetPractice();
@@ -477,7 +496,7 @@ function start(scene: ReturnType<typeof makeScene>) {
       showLobby();
     }
     toPlatform({ type: 'ready' });
-  } else client.resume();
+  } else if (!client.resume()) setIntro(true);
 
   const observer = new ResizeObserver(() => scene.resize());
   observer.observe(canvas);

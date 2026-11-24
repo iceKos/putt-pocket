@@ -543,6 +543,7 @@ export function makeScene(canvas: HTMLCanvasElement) {
     return dot;
   });
 
+  let introView = false;
   function resize() {
     const width = canvas.clientWidth;
     const height = Math.max(1, canvas.clientHeight);
@@ -553,8 +554,9 @@ export function makeScene(canvas: HTMLCanvasElement) {
     const halfHeight = Math.max(scenicHeight, (portrait && activeHole > 0 ? 6.55 : 6.15) / aspect);
     camera.position.set(portrait ? 2.3 : 2.0, portrait ? 14 : 9, 12);
     camera.lookAt(portrait ? -0.45 : 0.85, !portrait && activeHole === 9 ? 0.68 : 0, portrait ? 0.04 : -0.25);
-    camera.left = -halfHeight * aspect;
-    camera.right = halfHeight * aspect;
+    const shift = introView && width >= 800 && aspect >= 1.2 ? -halfHeight * aspect * 0.30 : 0;
+    camera.left = -halfHeight * aspect + shift;
+    camera.right = halfHeight * aspect + shift;
     camera.top = halfHeight;
     camera.bottom = -halfHeight;
     camera.updateProjectionMatrix();
@@ -715,5 +717,11 @@ export function makeScene(canvas: HTMLCanvasElement) {
   }
 
   setHole(0);
-  return { resize, pointAt, ballScreenPosition, render, setHole, emit, releaseSling };
+  return {
+    resize, pointAt, ballScreenPosition, render, setHole, emit, releaseSling,
+    setIntroView(visible: boolean) {
+      introView = visible;
+      resize();
+    },
+  };
 }
