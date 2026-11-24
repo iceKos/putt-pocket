@@ -1,8 +1,11 @@
 import * as T from 'three';
 import { PLAYER_COLORS, type Seat } from './room-protocol';
-import { BALL_RADIUS, BRIDGE, BUMPERS, COURSES, CUP_RADIUS, GATE, gateLift, groundHeight, MILL, type Point } from './golf';
+import { ALPINE_ICE, ARENA_COLUMNS, ARENA_SAND, BALL_RADIUS, BRIDGE, BUMPERS, COURSES, CUP_RADIUS, FJORD_WIND,
+  fjordWind, GATE, gateClearsBall, gateLift, groundHeight, HANOK_GATES, hanokGateLift, SHELTER_ROCKS,
+  WALL_SWITCHBACKS, YUCATAN_CHUTE, type Point } from './golf';
 import { decorateCourse, palettes } from './themes';
 import { golfBallMaterials, makeEffects, type Burst } from './fx';
+import { flyCountryFlag } from './flags';
 
 const geometry = {
   box: new T.BoxGeometry(),
@@ -52,8 +55,135 @@ function paving(scene: T.Scene) {
   };
 }
 
+function alpineIce(group: T.Group) {
+  const lake = new T.MeshStandardMaterial({ color: 0x75bdcf, roughness: 0.28, metalness: 0.035 });
+  const rim = matte(0xb7e6e9);
+  for (const [inner, offset, material] of [[0, 0.011, lake], [0.963, 0.015, rim]] as const) {
+    const sheet = new T.RingGeometry(inner, 1, 84, 22).rotateX(-Math.PI / 2);
+    const vertices = sheet.attributes.position;
+    for (let i = 0; i < vertices.count; i++) {
+      const x = ALPINE_ICE.x + vertices.getX(i) * ALPINE_ICE.width;
+      const z = ALPINE_ICE.z + vertices.getZ(i) * ALPINE_ICE.depth;
+      vertices.setXYZ(i, x, groundHeight(3, x, z) + offset, z);
+    }
+    sheet.computeVertexNormals();
+    mesh(group, sheet, material, 0, 0, 0).castShadow = false;
+  }
+  const frost = new T.LineBasicMaterial({ color: 0xc6eef3, transparent: true, opacity: 0.73 });
+  for (const crack of [
+    [[-2.32, -0.31], [-1.68, -0.26], [-1.22, -0.65], [-0.61, -0.62]],
+    [[-1.68, -0.26], [-1.23, -0.02], [-0.97, 0.22]],
+    [[-0.56, 0.46], [0.07, 0.40], [0.56, 0.59], [1.26, 0.42]],
+    [[0.54, -0.73], [0.91, -0.41], [1.49, -0.35], [1.91, -0.07], [2.36, -0.14]],
+  ]) {
+    const points = crack.map(([x, z]) => new T.Vector3(x, groundHeight(3, x, z) + 0.034, z));
+    // Subdivide each crack so it follows the slope between corner points.
+    const polyline: T.Vector3[] = [];
+    for (let i = 1; i < points.length; i++) {
+      for (let j = 0; j < 8; j++) {
+        const point = points[i - 1].clone().lerp(points[i], j / 8);
+        point.y = groundHeight(3, point.x, point.z) + 0.034;
+        polyline.push(point);
+      }
+    }
+    polyline.push(points.at(-1)!);
+    group.add(new T.Line(new T.BufferGeometry().setFromPoints(polyline), frost));
+  }
+}
+
+function yucatanTerrace(group: T.Group) {
+  const stone = matte(0xb9a371);
+  const cap = matte(0xe1c289);
+  const jade = matte(0x688775);
+  const ramp = new T.PlaneGeometry(4.96, 3.36, 68, 46).rotateX(-Math.PI / 2);
+  const vertices = ramp.attributes.position;
+  for (let i = 0; i < vertices.count; i++) {
+    const x = vertices.getX(i) + 2.858;
+    const z = vertices.getZ(i) + 0.02;
+    vertices.setXYZ(i, x, groundHeight(8, x, z) + 0.007, z);
+  }
+  ramp.computeVertexNormals();
+  mesh(group, ramp, matte(0xb7a979), 0, 0, 0).castShadow = false;
+
+  const chute = YUCATAN_CHUTE;
+  for (const [from, to] of chute.walls) {
+    box(group, stone, chute.x, 0.21, (from + to) / 2, chute.radius * 2, 0.42, to - from);
+    box(group, cap, chute.x, 0.45, (from + to) / 2, chute.radius * 2.13, 0.072, to - from);
+  }
+  for (const z of [chute.from - 0.091, chute.to + 0.091]) {
+    box(group, stone, chute.x, 0.44, z, 0.40, 0.88, 0.25);
+    box(group, jade, chute.x, 0.81, z, 0.41, 0.075, 0.26);
+  }
+  const center = (chute.from + chute.to) / 2;
+  for (let i = 0; i < 3; i++) {
+    box(group, i === 1 ? stone : cap, chute.x, 0.879 + i * 0.076, center,
+      0.41 - i * 0.06, 0.074, chute.to - chute.from + 0.57 - i * 0.15);
+  }
+  const divider = chute.divider;
+  for (let i = 0; i < 7; i++) {
+    const length = (divider.to - divider.from) / 7;
+    box(group, i % 2 ? cap : stone, divider.from + (i + 0.5) * length, 0.11, divider.z,
+      length - 0.015, 0.22, divider.radius * 2);
+  }
+  for (const z of [chute.from + 0.13, chute.to - 0.13]) {
+    box(group, jade, 0.22, 0.018, z, 0.18, 0.022, 0.063).castShadow = false;
+  }
+}
+
+function fjordWindMarkers(group: T.Group) {
+  const band = new T.MeshBasicMaterial({ color: 0x83dac0, transparent: true, opacity: 0.19, depthWrite: false });
+  const gustTint = new T.MeshBasicMaterial({ color: 0xa3e7e0, transparent: true, depthWrite: false });
+  const chevron = new T.Shape([
+    new T.Vector2(-0.20, -0.04), new T.Vector2(0, -0.30), new T.Vector2(0.20, -0.04),
+    new T.Vector2(0.13, -0.04), new T.Vector2(0, -0.20), new T.Vector2(-0.13, -0.04),
+  ]);
+  const gustShape = new T.ShapeGeometry(chevron).rotateX(-Math.PI / 2);
+  const gustMarks = [-1.6, 0, 1.6].map((x) => mesh(group, gustShape, gustTint, x, 0.018, 1.52));
+  gustMarks.forEach((mark) => { mark.castShadow = false; });
+  const snow = matte(0x9bbab8);
+  const shield = matte(0x586e77);
+  const width = FJORD_WIND.right - FJORD_WIND.left;
+  const mid = (FJORD_WIND.left + FJORD_WIND.right) / 2;
+  for (const z of [FJORD_WIND.top, FJORD_WIND.bottom]) {
+    for (let i = 0; i < 13; i++) {
+      const x = mid - width / 2 + width * (i + 0.5) / 13;
+      box(group, band, x, 0.013, z, 0.28, 0.004, 0.042).castShadow = false;
+    }
+  }
+  for (const [i, rock] of SHELTER_ROCKS.entries()) {
+    const obstacle = mesh(group, new T.DodecahedronGeometry(1), shield, rock.x, 0.147, rock.z);
+    obstacle.scale.set(rock.radius, 0.23 + i * 0.019, rock.radius);
+    const top = mesh(group, new T.DodecahedronGeometry(1), snow, rock.x - 0.05, 0.32 + i * 0.021, rock.z);
+    top.scale.set(rock.radius * 0.58, 0.071, rock.radius * 0.56);
+  }
+  const ribbons = [[-3.33, 2.8], [3.38, 2.8]].map(([x, z]) => {
+    mesh(group, new T.CylinderGeometry(0.026, 0.032, 0.74, 8), snow, x, 0.385, z);
+    const ribbon = new T.Group();
+    ribbon.position.set(x, 0.72, z);
+    group.add(ribbon);
+    for (let stripe = 0; stripe < 4; stripe++) {
+      const section = box(ribbon, new T.MeshBasicMaterial({ color: stripe % 2 ? 0xeeeecc : 0xe9816b }),
+        0.068 + stripe * 0.126, -stripe * 0.018, 0, 0.126, 0.14 - stripe * 0.022, 0.033);
+      section.rotation.z = -0.13;
+      section.castShadow = false;
+    }
+    return ribbon;
+  });
+  return (seconds: number) => {
+    const gust = fjordWind(seconds);
+    const strength = Math.min(1, Math.abs(gust) / 2.45);
+    gustTint.opacity = strength * 0.63;
+    for (const mark of gustMarks) mark.rotation.y = gust >= 0 ? 0 : Math.PI;
+    for (const ribbon of ribbons) {
+      ribbon.rotation.y = gust >= 0 ? -Math.PI / 2 : Math.PI / 2;
+      ribbon.rotation.z = -0.68 + strength * 0.59;
+      ribbon.scale.x = 0.44 + strength * 0.56;
+    }
+  };
+}
+
 function course(scene: T.Group, index: number) {
-  const { outline, cup: CUP, walls } = COURSES[index];
+  const { outline, cup: CUP, walls, flag } = COURSES[index];
   const shape = new T.Shape(outline.map(({ x, z }) => new T.Vector2(x, -z)));
   const hole = new T.Path();
   hole.absarc(CUP.x, -CUP.z, CUP_RADIUS, 0, Math.PI * 2, true);
@@ -90,6 +220,7 @@ function course(scene: T.Group, index: number) {
     hill.computeVertexNormals();
     const surface = mesh(scene, hill, turf, 0, 0, 0);
     surface.castShadow = true;
+    alpineIce(scene);
   }
 
   for (const wall of walls) {
@@ -113,28 +244,33 @@ function course(scene: T.Group, index: number) {
   mesh(scene, new T.TorusGeometry(CUP_RADIUS, 0.025, 7, 32), cap, CUP.x, 0.006, CUP.z).rotation.x = -Math.PI / 2;
   mesh(scene, new T.CylinderGeometry(0.024, 0.024, 1.53, 10), colors.yellow, CUP.x, 0.62, CUP.z);
   mesh(scene, geometry.sphere, colors.yellow, CUP.x, 1.4, CUP.z).scale.setScalar(0.046);
-  const flagShape = new T.Shape([new T.Vector2(0, 0), new T.Vector2(0.74, -0.17), new T.Vector2(0, -0.36)]);
-  const flag = colors.yellow.clone();
-  flag.side = T.DoubleSide;
-  mesh(scene, new T.ShapeGeometry(flagShape), flag, CUP.x, 1.34, CUP.z).rotation.y = -0.23;
+  flyCountryFlag(scene, flag, CUP);
 }
 
 function timberBridge(group: T.Group) {
-  const water = matte(0x37aab5);
-  const foam = matte(0x79cbd0);
+  const water = matte(0x348e8b);
+  const foam = matte(0x80c5b3);
   const wood = [matte(0xb87942), matte(0xd69855), matte(0xc4884d)];
   const x = (BRIDGE.left + BRIDGE.right) / 2;
   box(group, water, x, -0.085, (BRIDGE.top + BRIDGE.bottom) / 2,
     BRIDGE.right - BRIDGE.left, 0.04, BRIDGE.bottom - BRIDGE.top);
-  for (let i = 0; i < 12; i++) {
-    const z = BRIDGE.top + 0.17 + i * 0.44;
+  const ripples: { line: T.Mesh; x: number; width: number }[] = [];
+  for (let i = 0; i < 25; i++) {
+    const z = BRIDGE.top + 0.14 + i * 0.216;
     if (z < BRIDGE.deckTop || z > BRIDGE.deckBottom) {
-      box(group, foam, x + (i % 3 - 1) * 0.43, -0.061, z, 0.32 + 0.09 * (i % 4), 0.004, 0.035);
+      const rippleX = x + (i % 4 - 1.5) * 0.42;
+      const width = 0.20 + 0.063 * (i % 4);
+      const line = box(group, foam, rippleX, -0.061, z, width, 0.004, 0.026);
+      line.castShadow = false;
+      ripples.push({ line, x: rippleX, width });
     }
   }
   for (let i = 0; i < 10; i++) {
     box(group, wood[i % 3], BRIDGE.left + 0.11 + i * 0.22, 0.006, (BRIDGE.deckTop + BRIDGE.deckBottom) / 2,
       0.215, 0.045, BRIDGE.deckBottom - BRIDGE.deckTop);
+  }
+  for (const edge of [BRIDGE.deckTop, BRIDGE.deckBottom]) {
+    box(group, wood[1], x, 0.033, edge, BRIDGE.right - BRIDGE.left, 0.048, 0.047);
   }
   // Short stakes mark the entrance without obstructing the ball.
   for (const x of [BRIDGE.left - 0.1, BRIDGE.right + 0.1]) {
@@ -142,31 +278,46 @@ function timberBridge(group: T.Group) {
       box(group, wood[0], x, 0.13, z, 0.12, 0.26, 0.12);
     }
   }
+  return (time: number) => {
+    ripples.forEach(({ line, x, width }, i) => {
+      line.position.x = x + Math.sin(time * 1.2 + i * 1.7) * 0.105;
+      line.scale.x = width * (0.90 + Math.sin(time * 1.1 + i) * 0.22);
+    });
+  };
 }
 
-function windmill(group: T.Group) {
-  const wheel = new T.Group();
-  wheel.position.set(MILL.x, 0, MILL.z);
-  group.add(wheel);
-  const clay = matte(0xc76641);
-  const cream = matte(0xffdfaa);
-  const wood = matte(0x8d5b39);
-  const circle = mesh(group, new T.RingGeometry(MILL.length + 0.13, MILL.length + 0.17, 48).rotateX(-Math.PI / 2),
-    cream, MILL.x, 0.012, MILL.z);
-  circle.castShadow = false;
-  mesh(wheel, new T.CylinderGeometry(0.19, 0.25, 0.71, 8), cream, 0, 0.355, 0);
-  mesh(wheel, new T.ConeGeometry(0.33, 0.42, 8), clay, 0, 0.86, 0);
-  for (let i = 0; i < 4; i++) {
-    const arm = new T.Group();
-    arm.rotation.y = -i * Math.PI / 2;
-    wheel.add(arm);
-    box(arm, wood, MILL.length / 2, 0.145, 0, MILL.length, 0.20, MILL.width);
-    box(arm, cream, MILL.length * 0.74, 0.257, 0, MILL.length * 0.52, 0.035, MILL.width * 0.88);
-    for (let line = 0; line < 4; line++) {
-      box(arm, clay, MILL.length * (0.53 + line * 0.14), 0.28, 0, 0.042, 0.018, MILL.width * 0.87);
+function colosseumArena(group: T.Group) {
+  const sand = matte(0xd7a45f);
+  const border = matte(0xf0c68a);
+  const stone = matte(0xc8a382);
+  const trim = matte(0xe3c2a0);
+  const center = new T.Shape();
+  center.absellipse(0, 0, ARENA_SAND.width, ARENA_SAND.depth, 0, Math.PI * 2, false, 0);
+  const bed = mesh(group, new T.ShapeGeometry(center, 32).rotateX(-Math.PI / 2), sand, ARENA_SAND.x, 0.009, ARENA_SAND.z);
+  bed.castShadow = false;
+  const ring = mesh(group, new T.RingGeometry(0.972, 1.0, 72).rotateX(-Math.PI / 2),
+    border, ARENA_SAND.x, 0.011, ARENA_SAND.z);
+  ring.scale.set(ARENA_SAND.width, 1, ARENA_SAND.depth);
+  ring.castShadow = false;
+  const rake = matte(0xcfa36b);
+  for (let i = 0; i < 6; i++) {
+    const z = -1.28 + i * 0.42;
+    const length = ARENA_SAND.width * Math.sqrt(1 - (z / ARENA_SAND.depth) ** 2);
+    box(group, rake, ARENA_SAND.x, 0.011, ARENA_SAND.z + z, length * 1.8, 0.004, 0.014).castShadow = false;
+  }
+
+  for (const [index, column] of ARENA_COLUMNS.entries()) {
+    const height = [0.85, 0.72, 0.49][index];
+    const { x, z, radius } = column;
+    mesh(group, new T.CylinderGeometry(radius, radius, 0.17, 12), trim, x, 0.085, z);
+    mesh(group, new T.CylinderGeometry(radius * 0.66, radius * 0.74, height, 12), stone, x, height / 2 + 0.16, z);
+    mesh(group, new T.CylinderGeometry(radius * 0.83, radius * 0.77, 0.11, 12), trim, x, height + 0.15, z);
+    for (let i = 0; i < 10; i++) {
+      const angle = i * Math.PI / 5;
+      mesh(group, new T.CylinderGeometry(0.020, 0.025, height * 0.87, 6), trim,
+        x + Math.cos(angle) * radius * 0.68, height / 2 + 0.16, z + Math.sin(angle) * radius * 0.68);
     }
   }
-  return wheel;
 }
 
 function pinball(group: T.Group) {
@@ -212,6 +363,65 @@ function nileGate(group: T.Group) {
   return gate;
 }
 
+function greatWall(group: T.Group) {
+  const stone = matte(0x8b7469);
+  const mortar = matte(0xbaa08a);
+  const marker = matte(0xc96040);
+  for (const wall of WALL_SWITCHBACKS) {
+    const center = (wall.from + wall.to) / 2;
+    const length = wall.to - wall.from;
+    box(group, stone, wall.x, 0.21, center, wall.radius * 2, 0.43, length);
+    box(group, mortar, wall.x, 0.44, center, wall.radius * 2.08, 0.075, length + 0.04);
+    const blocks = Math.floor(length / 0.42);
+    for (let i = 0; i < blocks; i++) {
+      const z = wall.from + length * (i + 0.5) / blocks;
+      box(group, mortar, wall.x, 0.53, z, wall.radius * 2, 0.16, 0.21);
+      box(group, mortar, wall.x + wall.radius + 0.004, 0.22, z, 0.015, 0.017, 0.14);
+    }
+    const gapEnd = wall.x > 0 ? wall.from : wall.to;
+    box(group, marker, wall.x, 0.28, gapEnd, wall.radius * 2, 0.56, 0.20);
+  }
+}
+
+function hanokGates(group: T.Group) {
+  const plaster = matte(0xd7c7a7);
+  const grey = matte(0x56615d);
+  const wood = matte(0x9d6645);
+  const green = matte(0x416e60);
+  const amber = new T.Color(0xffb862);
+  const open = new T.Color(0x72f0bc);
+  return HANOK_GATES.map((gate) => {
+    const closedWidth = gate.to - gate.from;
+    const center = (gate.from + gate.to) / 2;
+    for (const [from, to] of [[-3.65, gate.from], [gate.to, 3.45]]) {
+      box(group, plaster, gate.x, 0.21, (from + to) / 2, gate.radius * 2, 0.42, to - from);
+      box(group, grey, gate.x, 0.44, (from + to) / 2, gate.radius * 2.1, 0.07, to - from);
+    }
+    for (const post of [gate.from - 0.049, gate.to + 0.049]) {
+      box(group, wood, gate.x, 0.53, post, 0.25, 1.06, 0.18);
+      box(group, green, gate.x, 1.04, post, 0.29, 0.09, 0.22);
+    }
+    box(group, green, gate.x, 1.14, center, 0.34, 0.15, closedWidth + 0.39);
+    const lamp = new T.MeshBasicMaterial({ color: amber });
+    mesh(group, geometry.sphere, lamp, gate.x, 1.28, center).scale.setScalar(0.101);
+
+    const shutter = new T.Group();
+    shutter.position.set(gate.x, 0, center);
+    group.add(shutter);
+    box(shutter, wood, 0, 0.28, 0, 0.27, 0.56, closedWidth);
+    const laths = 10;
+    for (let i = 0; i < laths; i++) {
+      box(shutter, plaster, 0.141, 0.29, closedWidth * ((i + 0.5) / laths - 0.5), 0.028, 0.51, 0.026);
+    }
+    box(shutter, green, 0, 0.53, 0, 0.31, 0.07, closedWidth);
+    return (elapsed: number) => {
+      const lift = hanokGateLift(elapsed, gate.phase);
+      shutter.position.y = lift;
+      lamp.color.copy(gateClearsBall(lift) ? open : amber);
+    };
+  });
+}
+
 export function makeScene(canvas: HTMLCanvasElement) {
   const renderer = new T.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
@@ -221,7 +431,8 @@ export function makeScene(canvas: HTMLCanvasElement) {
   scene.background = new T.Color(0x93af89);
   scene.fog = new T.Fog(0x93af89, 19, 34);
 
-  scene.add(new T.HemisphereLight(0xfff8ed, 0xaaaa9b, 2.1));
+  const ambient = new T.HemisphereLight(0xfff8ed, 0xaaaa9b, 2.1);
+  scene.add(ambient);
   const sun = new T.DirectionalLight(0xffeac9, 1.9);
   sun.position.set(-4.9, 10, -4);
   sun.castShadow = true;
@@ -245,11 +456,15 @@ export function makeScene(canvas: HTMLCanvasElement) {
     course(group, index);
     return group;
   });
-  const decorations = courses.map(decorateCourse);
-  timberBridge(courses[1]);
-  const wheel = windmill(courses[2]);
+  const animateScenery = courses.map(decorateCourse);
+  const animateBridge = timberBridge(courses[1]);
+  colosseumArena(courses[2]);
   pinball(courses[4]);
   const gate = nileGate(courses[5]);
+  greatWall(courses[6]);
+  const updateHanokGates = hanokGates(courses[7]);
+  yucatanTerrace(courses[8]);
+  const updateWind = fjordWindMarkers(courses[9]);
   let activeHole = -1;
   function setHole(index: number) {
     if (activeHole === index) return;
@@ -259,8 +474,13 @@ export function makeScene(canvas: HTMLCanvasElement) {
     setPaving(palette.paving);
     (scene.background as T.Color).setHex(palette.sky);
     (scene.fog as T.Fog).color.setHex(palette.sky);
+    ambient.color.setHex(index === 9 ? 0xd8ebff : 0xfff8ed);
+    ambient.intensity = index === 9 ? 1.6 : 2.1;
+    sun.color.setHex(index === 9 ? 0xc1e1ef : 0xffeac9);
+    sun.intensity = index === 9 ? 1.15 : 1.9;
     effects.clear();
     lastBall = lastRival = null;
+    slingRelease = null;
     resize();
   }
   const ballMaterials = golfBallMaterials(['#d99035', '#247ab9']);
@@ -286,6 +506,24 @@ export function makeScene(canvas: HTMLCanvasElement) {
   ball.scale.setScalar(BALL_RADIUS);
   opponent.scale.setScalar(BALL_RADIUS);
   const indicator = new T.MeshBasicMaterial({ color: 0x3cf0e1 });
+  type Aim = { angle: number; power: number };
+  const sling = new T.Group();
+  scene.add(sling);
+  const rubber = new T.MeshBasicMaterial({ color: 0x46e3c9 });
+  const bandGeometry = new T.CylinderGeometry(0.025, 0.025, 1, 7);
+  const strands = [new T.Mesh(bandGeometry, rubber), new T.Mesh(bandGeometry, rubber)];
+  const anchorGeometry = new T.CylinderGeometry(0.053, 0.072, 0.07, 10);
+  const anchorMaterial = new T.MeshBasicMaterial({ color: 0x1c4b46 });
+  const anchors = [new T.Mesh(anchorGeometry, anchorMaterial), new T.Mesh(anchorGeometry, anchorMaterial)];
+  const grip = new T.Mesh(new T.SphereGeometry(0.08, 14, 10), rubber);
+  grip.scale.y = 0.52;
+  sling.add(...strands, ...anchors, grip);
+  const vertical = new T.Vector3(0, 1, 0);
+  const strandVector = new T.Vector3();
+  const relaxed = new T.Color(0x46e3c9);
+  const taut = new T.Color(0xffc55c);
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let slingRelease: { position: Point; aim: Aim; time: number } | null = null;
   const ring = mesh(scene, new T.RingGeometry(0.25, 0.284, 32).rotateX(-Math.PI / 2), indicator, 0, 0.022, 0);
   ring.castShadow = false;
   const arrowShape = new T.Shape([
@@ -310,9 +548,11 @@ export function makeScene(canvas: HTMLCanvasElement) {
     const height = Math.max(1, canvas.clientHeight);
     const aspect = width / height;
     const portrait = aspect < 0.95;
-    const halfHeight = Math.max(4.6, (portrait && activeHole > 0 ? 6.55 : 6.15) / aspect);
+    let scenicHeight = 4.6;
+    if (!portrait && [0, 3, 5, 6, 7, 8, 9].includes(activeHole)) scenicHeight = activeHole === 9 ? 5.68 : 5.12;
+    const halfHeight = Math.max(scenicHeight, (portrait && activeHole > 0 ? 6.55 : 6.15) / aspect);
     camera.position.set(portrait ? 2.3 : 2.0, portrait ? 14 : 9, 12);
-    camera.lookAt(portrait ? -0.45 : 0.85, 0, portrait ? 0.04 : -0.25);
+    camera.lookAt(portrait ? -0.45 : 0.85, !portrait && activeHole === 9 ? 0.68 : 0, portrait ? 0.04 : -0.25);
     camera.left = -halfHeight * aspect;
     camera.right = halfHeight * aspect;
     camera.top = halfHeight;
@@ -355,15 +595,52 @@ export function makeScene(canvas: HTMLCanvasElement) {
     if (trail && distance > 0.035) effects.trail(previous, groundHeight(activeHole, previous.x, previous.z), PLAYER_COLORS[seat]);
   }
 
-  function render(position: Point, ballHeight: number, aim: { angle: number; power: number } | null, ready: boolean,
+  function releaseSling(position: Point, aim: Aim) {
+    if (!reduceMotion) slingRelease = { position: { ...position }, aim: { ...aim }, time: performance.now() };
+  }
+
+  function drawSling(position: Point, aim: Aim) {
+    const dx = Math.cos(aim.angle);
+    const dz = Math.sin(aim.angle);
+    const stretch = aim.power * 1.22;
+    rubber.color.copy(relaxed).lerp(taut, Math.pow(aim.power, 1.8));
+    grip.position.x = position.x - dx * stretch;
+    grip.position.z = position.z - dz * stretch;
+    grip.position.y = groundHeight(activeHole, grip.position.x, grip.position.z) + 0.099;
+    anchors.forEach((anchor, index) => {
+      const side = index === 0 ? -0.39 : 0.39;
+      anchor.position.x = position.x + dx * 0.10 - dz * side;
+      anchor.position.z = position.z + dz * 0.10 + dx * side;
+      anchor.position.y = groundHeight(activeHole, anchor.position.x, anchor.position.z) + 0.10;
+      const strand = strands[index];
+      strandVector.subVectors(grip.position, anchor.position);
+      strand.position.copy(anchor.position).addScaledVector(strandVector, 0.5);
+      strand.scale.y = strandVector.length();
+      strand.quaternion.setFromUnitVectors(vertical, strandVector.normalize());
+    });
+  }
+
+  function render(position: Point, ballHeight: number, aim: Aim | null, ready: boolean,
     seat: Seat = 0, rival?: Point & { sunk: boolean }, elapsedSeconds = 0) {
-    if (activeHole === 2) {
-      wheel.rotation.y = -elapsedSeconds * MILL.speed;
-      const sails = decorations[2];
-      if (sails) sails.rotation.z = elapsedSeconds * 0.56 + 0.25;
-    }
     if (activeHole === 5) gate.position.y = gateLift(elapsedSeconds);
+    if (activeHole === 7) updateHanokGates.forEach((update) => update(elapsedSeconds));
+    if (activeHole === 9) updateWind(elapsedSeconds);
+    const sceneryTime = reduceMotion ? 0 : elapsedSeconds;
+    if (activeHole === 1) animateBridge(sceneryTime);
+    animateScenery[activeHole]?.(sceneryTime);
     const now = performance.now();
+    sling.visible = false;
+    if (ready && aim && aim.power >= 0.035) {
+      sling.visible = true;
+      drawSling(position, aim);
+    } else if (slingRelease) {
+      const progress = (now - slingRelease.time) / 140;
+      if (progress >= 1) slingRelease = null;
+      else {
+        sling.visible = true;
+        drawSling(slingRelease.position, { angle: slingRelease.aim.angle, power: slingRelease.aim.power * (1 - progress) ** 3 });
+      }
+    }
     const delta = Math.min(0.05, (now - lastFrame) / 1000);
     lastFrame = now;
     const trail = now - lastTrail >= 52;
@@ -394,7 +671,7 @@ export function makeScene(canvas: HTMLCanvasElement) {
     ring.position.set(position.x, surface + 0.022, position.z);
     ring.visible = ready;
     const angle = aim?.angle ?? COURSES[activeHole].initialAngle;
-    arrow.visible = ready;
+    arrow.visible = ready && !sling.visible;
     arrow.position.x = position.x - Math.cos(angle) * 0.74;
     arrow.position.z = position.z - Math.sin(angle) * 0.74;
     arrow.position.y = groundHeight(activeHole, arrow.position.x, arrow.position.z) + 0.040;
@@ -412,6 +689,19 @@ export function makeScene(canvas: HTMLCanvasElement) {
         const segment = ((position.x + x * distance - wall.from.x) * wall.dx + (position.z + z * distance - wall.from.z) * wall.dz) / wall.length ** 2;
         if (segment >= 0 && segment <= 1) limit = distance;
       }
+      if (activeHole === 2) {
+        for (const column of ARENA_COLUMNS) {
+          const dx = column.x - position.x;
+          const dz = column.z - position.z;
+          const along = dx * x + dz * z;
+          const perpendicular = dx * z - dz * x;
+          const radius = column.radius + BALL_RADIUS;
+          if (along > 0 && Math.abs(perpendicular) < radius) {
+            const contact = along - Math.sqrt(radius * radius - perpendicular * perpendicular);
+            limit = Math.min(limit, Math.max(0, contact));
+          }
+        }
+      }
       dots.forEach((dot, index) => {
         const distance = 0.33 + index * 0.27;
         dot.visible = distance <= limit;
@@ -425,5 +715,5 @@ export function makeScene(canvas: HTMLCanvasElement) {
   }
 
   setHole(0);
-  return { resize, pointAt, ballScreenPosition, render, setHole, emit };
+  return { resize, pointAt, ballScreenPosition, render, setHole, emit, releaseSling };
 }

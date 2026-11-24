@@ -36,7 +36,13 @@ h1::after {
 .timer { justify-self: center; font-size: clamp(23px, 2.7vw, 46px); padding: 5px 24px 7px; }
 .timer.urgent { color: #ffd278; }
 .score { justify-self: end; gap: 10px; padding-inline: 14px; font-size: clamp(16px, 1.7vw, 28px); }
-.score i { width: .8em; height: .8em; border-radius: 50%; background: #fff8dc; }
+.player-icon {
+  display: inline-block; flex: 0 0 auto; width: .8em; height: .8em;
+  border-radius: 50%; background: #fff8dc; overflow: hidden;
+}
+.player-icon img { display: block; width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+.platform-match .score .player-icon, .standing-player .player-icon:has(img) { width: 22px; height: 22px; padding: 2px; }
+.player-name { max-width: clamp(65px, 7vw, 114px); overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
 .controls {
   position: absolute; inset: auto 8px max(env(safe-area-inset-bottom), 16px);
   display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none;
@@ -100,6 +106,15 @@ button:hover { background: #91fff2; }
   font-variant-numeric: tabular-nums; display: grid; gap: 6px;
 }
 #standings li { background: #324037; border-radius: 8px; padding: 7px 11px; }
+.standing-player { display: flex; align-items: center; justify-content: center; gap: 6px; overflow-wrap: anywhere; }
+#result .result-card { max-width: 100%; }
+@media (max-width: 900px) {
+  .platform-match .hud { grid-template-columns: 1fr auto; }
+  .platform-match .timer { justify-self: end; }
+  .platform-match .scores { grid-column: 1 / -1; }
+  .platform-match .score { padding-block: 5px; }
+  .platform-match .room-tools, .platform-match .course-info { top: calc(max(env(safe-area-inset-top), 12px) + 82px); }
+}
 @media (max-width: 600px) {
   .scores { gap: 3px; }
   .scores .score { gap: 5px; padding-inline: 7px; font-size: 14px; }
@@ -119,6 +134,7 @@ button:hover { background: #91fff2; }
 .course-info .pill, #practice-hole {
   padding: 7px 10px; font-size: 12px; color: #fffdf0; background: #1d2523e6;
 }
+#running-total { display: block; max-width: min(58vw, 340px); overflow: hidden; text-overflow: ellipsis; }
 #practice-hole { color-scheme: dark; border: 0; border-radius: 100px; font-family: inherit; font-weight: inherit; }
 .turnover { pointer-events: none; }
 #turnover h2 { font-size: clamp(24px, 5vw, 42px); }
@@ -134,3 +150,20 @@ button:hover { background: #91fff2; }
   .room-tools:not(:has(#practice-hole[hidden])) { flex-direction: column; align-items: end; }
 }
 #course-country { display: block; color: var(--yellow); }
+.sound-toggle {
+  position: absolute;
+  z-index: 1;
+  inset: auto auto max(env(safe-area-inset-bottom), 14px) max(env(safe-area-inset-left), 10px);
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  margin: 0;
+  padding: 0;
+  background: #1d2523ed;
+  color: #fffdf0;
+}
+.sound-toggle:hover { background: #38443a; }
+.sound-toggle svg { width: 21px; height: 21px; }
+.sound-toggle .sound-cross, .sound-toggle[aria-pressed="true"] .sound-waves { display: none; }
+.sound-toggle[aria-pressed="true"] .sound-cross { display: initial; }

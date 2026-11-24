@@ -1,11 +1,9 @@
 import type { RoomCommand, RoomMessage, RoomSnapshot, Seat } from './room-protocol';
 
 type Session = { code: string; token: string; seat: Seat };
-const STORAGE_KEY = 'putt-pocket-seat';
-
-function storedSession(): Session | null {
+function storedSession(key: string): Session | null {
   try {
-    const value = JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? 'null');
+    const value = JSON.parse(sessionStorage.getItem(key) ?? 'null');
     return typeof value?.code === 'string' && typeof value.token === 'string'
       && (value.seat === 0 || value.seat === 1) ? value : null;
   } catch {
@@ -13,13 +11,14 @@ function storedSession(): Session | null {
   }
 }
 
-export function makeRoomClient(events: {
+export function makeRoomClient(platformSession: string | null, events: {
   update: (room: RoomSnapshot, seat: Seat) => void;
   status: (message: string, reconnecting: boolean) => void;
   ended: (message: string) => void;
 }) {
   let socket: WebSocket | null = null;
-  let session = storedSession();
+  const storageKey = platformSession === null ? 'putt-pocket-seat' : `putt-pocket-naka-seat:${platformSession}`;
+  let session = storedSession(storageKey);
   let retry: ReturnType<typeof setTimeout> | undefined;
   let retryDelay = 300;
   let connectTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -37,7 +36,7 @@ export function makeRoomClient(events: {
     socket = null;
     previous?.close();
     session = null;
-    try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* Storage may be disabled in an iframe. */ }
+    try { sessionStorage.removeItem(storageKey); } catch { /* Storage may be disabled in an iframe. */ }
   }
 
   function open(command: RoomCommand) {
@@ -48,7 +47,7 @@ export function makeRoomClient(events: {
     endpoint.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const connection = new WebSocket(endpoint);
     socket = connection;
-    connectTimeout = setTimeout(() => connection.close(), 6000);
+    connectTimeout = setTimeout(() => connection.close(), command.type === 'join-naka' ? 15000 : 6000);
     events.status(command.type === 'resume' ? 'Reconnecting to your room…' : 'Connecting…', true);
     connection.addEventListener('open', () => {
       if (socket === connection) send(command);
@@ -65,7 +64,7 @@ export function makeRoomClient(events: {
         clearTimeout(connectTimeout);
         retryDelay = 300;
         session = { code: message.code, token: message.token, seat: message.seat };
-        try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session)); } catch { /* The match still works live. */ }
+        try { sessionStorage.setItem(storageKey, JSON.stringify(session)); } catch { /* The match still works live. */ }
         events.update(message.room, session.seat);
       } else if (session) {
         events.update(message.room, session.seat);
@@ -89,7 +88,9 @@ export function makeRoomClient(events: {
   }
 
   function resume() {
-    if (session) open({ type: 'resume', code: session.code, token: session.token });
+    if (!session) return false;
+    open({ type: 'resume', code: session.code, token: session.token });
+    return true;
   }
 
   return {

@@ -2,9 +2,11 @@ import type { Ball, Point } from './golf';
 
 export const PLAYER_COLORS = ['#fff8dc', '#3abef2'] as const;
 export type Seat = 0 | 1;
+export type PlayerProfile = { username: string; avatar?: string };
 
 export type PlayerSnapshot = {
   seat: Seat;
+  profile?: PlayerProfile;
   ball: Ball;
   strokes: number;
   score: number | null;
@@ -26,6 +28,7 @@ export type RoomSnapshot = {
 export type RoomCommand =
   | { type: 'create' }
   | { type: 'join'; code: string }
+  | { type: 'join-naka'; sessionId: string; token: string }
   | { type: 'resume'; code: string; token: string }
   | { type: 'shot'; angle: number; power: number; stroke: number; hole: number }
   | { type: 'leave' };

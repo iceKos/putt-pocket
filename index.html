@@ -13,12 +13,12 @@
     <header class="hud">
       <div class="pill identity">
         <h1>PUTT <span>POCKET</span></h1>
-        <span class="hole">HOLE <b id="hole-number">1</b> / <span id="hole-count">6</span></span>
+        <span class="hole">HOLE <b id="hole-number">1</b> / <span id="hole-count">10</span></span>
       </div>
-      <div id="timer" class="pill timer" aria-label="Time remaining">1:15</div>
+      <div id="timer" class="pill timer" aria-label="Time remaining">0:52</div>
       <div class="scores">
-        <div class="pill score" aria-label="Your strokes"><i id="my-color"></i><span id="score">0</span></div>
-        <div class="pill score" id="rival-score" aria-label="Opponent strokes" hidden><i></i><span id="rival-strokes">0</span></div>
+        <div class="pill score" id="my-score" aria-label="Your strokes"><i class="player-icon" aria-hidden="true"></i><span class="player-name" hidden></span><span id="score">0</span></div>
+        <div class="pill score" id="rival-score" aria-label="Opponent strokes" hidden><i class="player-icon" aria-hidden="true"></i><span class="player-name" hidden></span><span id="rival-strokes">0</span></div>
       </div>
     </header>
     <section class="course-info" aria-label="Current course">
@@ -45,13 +45,20 @@
       </div>
       <div id="waiting-room" hidden>
         <p id="invite-code"></p>
-        <p>Share this code. The round starts when your friend joins.</p>
+        <p id="waiting-copy">Share this code. The round starts when your friend joins.</p>
       </div>
       <p id="lobby-status" role="status"></p>
       <button id="lobby-close" class="secondary" type="button">Back to practice</button>
     </dialog>
+    <button id="sound-toggle" class="sound-toggle" type="button" aria-label="Mute sound" aria-pressed="false" title="Mute sound">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M11 5 6 9H3v6h3l5 4V5Z"/>
+        <path class="sound-waves" d="M15 9a4 4 0 0 1 0 6m3-9a8 8 0 0 1 0 12"/>
+        <path class="sound-cross" d="m16 9 5 6m0-6-5 6"/>
+      </svg>
+    </button>
     <footer class="controls">
-      <p id="instructions">Drag back from the ball and release to putt.</p>
+      <p id="instructions">Pull back from the ball and release to sling it.</p>
       <div class="pill stroke">
         <span>STROKE <b id="stroke">1</b> / 6</span>
         <div id="power" role="meter" aria-label="Shot power" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>

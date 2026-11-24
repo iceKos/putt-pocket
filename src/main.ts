@@ -1,11 +1,36 @@
 import './style.css';
-import { COURSES, createBall, HOLE_SECONDS, launch, moving, SHOT_LIMIT, STEP, stepPutt, BALL_RADIUS, type Point } from './golf';
+import { COURSES, createBall, launch, moving, SHOT_LIMIT, STEP, stepPutt, BALL_RADIUS, type Point } from './golf';
 import { makeScene } from './scene';
+import { makeGolfAudio } from './audio';
+import type { Burst } from './fx';
 import { makeRoomClient } from './room-client';
-import { PLAYER_COLORS, type RoomSnapshot, type Seat } from './room-protocol';
+import { PLAYER_COLORS, type PlayerSnapshot, type RoomSnapshot, type Seat } from './room-protocol';
+import { embedded, sessionIdFromUrl, takeLaunchToken, toPlatform } from '../docs/game-kit/naka-platform.client';
 
 const get = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = get<HTMLCanvasElement>('course');
+const platformSession = sessionIdFromUrl();
+const launchToken = takeLaunchToken();
+const platformMatch = platformSession !== null || launchToken !== null;
+
+const playerName = (player: PlayerSnapshot) => player.profile?.username || (player.seat === 0 ? 'White' : 'Blue');
+
+function setPlayerIcon(icon: HTMLElement, seat: Seat, avatar?: string) {
+  icon.style.backgroundColor = PLAYER_COLORS[seat];
+  if (icon.dataset.avatar === avatar) return;
+  icon.replaceChildren();
+  if (!avatar) {
+    delete icon.dataset.avatar;
+    return;
+  }
+  icon.dataset.avatar = avatar;
+  const image = document.createElement('img');
+  image.alt = '';
+  image.referrerPolicy = 'no-referrer';
+  image.addEventListener('error', () => image.remove(), { once: true });
+  image.src = avatar;
+  icon.append(image);
+}
 
 function start(scene: ReturnType<typeof makeScene>) {
   const timer = get('timer');
@@ -23,6 +48,18 @@ function start(scene: ReturnType<typeof makeScene>) {
   const liveCode = get('live-code');
   const waitingRoom = get('waiting-room');
   const standings = get('standings');
+  const myScore = get('my-score');
+  const rivalScore = get('rival-score');
+  if (platformMatch) {
+    get('game').classList.add('platform-match');
+    get('lobby-title').textContent = 'Naka Lite match';
+    get('lobby-close').textContent = 'Back to lobby';
+    get('waiting-copy').textContent = 'The round starts when both players join.';
+  }
+  const audio = makeGolfAudio(get<HTMLButtonElement>('sound-toggle'));
+  for (const gesture of ['click', 'pointerdown', 'touchstart', 'pointerup', 'keydown']) {
+    get('game').addEventListener(gesture, audio.unlock, { capture: true, passive: true });
+  }
 
   let ball = createBall();
   let strokes = 0;
@@ -55,23 +92,36 @@ function start(scene: ReturnType<typeof makeScene>) {
       && room.players.find((p) => p.seat === seat)?.score === null));
 
   function cancelAim() {
+    audio.stopPull();
     aim = null;
     if (drag && canvas.hasPointerCapture(drag.pointerId)) canvas.releasePointerCapture(drag.pointerId);
     drag = null;
   }
 
   function showLobby() {
-    if (!lobby.open) lobby.showModal();
+    if (!lobby.open) {
+      cancelAim();
+      lobby.showModal();
+    }
+  }
+
+  function cue(kind: Burst, point: Point, player: Seat) {
+    scene.emit(kind, point, player);
+    audio.play(kind, player === seat);
   }
 
   const total = (scores: number[]) => scores.reduce((sum, score) => sum + score, 0);
   const hint = () => [
-    'Drag back from the ball and release to putt.',
-    'Cross the bridge or go around the water. A splash costs one stroke.',
-    'Time your putt between the blades or go around the mill.',
-    'Use more power over the ridge, or take the flatter route around it.',
+    'Pull back from the ball and release to sling it.',
+    'Line up the narrow bridge and dodge the fruit baskets. A splash costs one stroke.',
+    'Sand slows the ball. Aim between the columns or take the grassy way around.',
+    'Ice carries the ball farther. Use a gentle shot or go around on the grass.',
     'Bank off the mosaic bumpers or pick a gap between them.',
     'Putt through the gate when it lifts, or take the path around the wall.',
+    'The wall gaps alternate. Use short shots to line up the next turn.',
+    'Aim through each doorway. A green signal means the gate is open.',
+    'Putt through the temple arch to drop a level, or go around on the wider path.',
+    'Watch the wind ribbons. Use the lane behind the rocks to stay sheltered.',
   ][hole];
 
   function selectHole(next: number) {
@@ -115,6 +165,14 @@ function start(scene: ReturnType<typeof makeScene>) {
 
   function returnToPractice() {
     client.leave();
+    if (platformMatch) {
+      if (embedded) {
+        connecting = true;
+        cancelAim();
+        toPlatform({ type: 'leave' });
+      } else location.assign(location.pathname);
+      return;
+    }
     room = null;
     seat = 0;
     connecting = connected = false;
@@ -127,27 +185,37 @@ function start(scene: ReturnType<typeof makeScene>) {
 
   function updateRoomUI() {
     const waiting = room?.phase === 'waiting';
+    const me = room?.players.find((p) => p.seat === seat);
     const rival = room?.players.find((p) => p.seat !== seat);
-    get('lobby-actions').hidden = Boolean(room) || connecting;
+    get('lobby-actions').hidden = platformMatch || Boolean(room) || connecting;
     waitingRoom.hidden = !waiting;
-    get('invite-code').textContent = waiting ? room?.code ?? '' : '';
-    roomButton.textContent = room ? 'Leave room' : 'Play with a friend';
-    picker.hidden = Boolean(room) || connecting;
+    get('invite-code').textContent = waiting && !platformMatch ? room?.code ?? '' : '';
+    roomButton.textContent = platformMatch ? 'Back to lobby' : room ? 'Leave room' : 'Play with a friend';
+    picker.hidden = platformMatch || Boolean(room) || connecting;
     const running = get('running-total');
     running.hidden = !room?.players[0]?.scores.length;
-    const runningText = room?.players.map((player) => `${player.seat === 0 ? 'White' : 'Blue'} ${total(player.scores)}`).join('  ·  ') ?? '';
+    const runningText = room?.players.map((player) => `${playerName(player)} ${total(player.scores)}`).join('  ·  ') ?? '';
     if (running.textContent !== runningText) running.textContent = runningText;
-    liveCode.hidden = !room;
-    liveCode.textContent = room ? `Room ${room.code}` : '';
-    get('my-color').style.backgroundColor = PLAYER_COLORS[seat];
-    const rivalScore = get('rival-score');
+    liveCode.hidden = platformMatch || !room;
+    liveCode.textContent = liveCode.hidden ? '' : `Room ${room?.code}`;
+    updatePlayerScore(myScore, seat, me);
     rivalScore.hidden = !rival;
     if (rival) {
       const value = String(rival.score ?? rival.strokes);
       const text = get('rival-strokes');
       if (text.textContent !== value) text.textContent = value;
-      rivalScore.querySelector('i')!.style.backgroundColor = PLAYER_COLORS[rival.seat];
+      updatePlayerScore(rivalScore, rival.seat, rival);
     }
+  }
+
+  function updatePlayerScore(chip: HTMLElement, color: Seat, player?: PlayerSnapshot) {
+    const name = chip.querySelector<HTMLElement>('.player-name')!;
+    const label = platformMatch && player ? playerName(player) : '';
+    if (name.textContent !== label) name.textContent = label;
+    name.hidden = !label;
+    const scoreLabel = label ? `${label}'s strokes` : chip === myScore ? 'Your strokes' : 'Opponent strokes';
+    if (chip.getAttribute('aria-label') !== scoreLabel) chip.setAttribute('aria-label', scoreLabel);
+    setPlayerIcon(chip.querySelector<HTMLElement>('.player-icon')!, color, player?.profile?.avatar);
   }
 
   function finishRoom(state: RoomSnapshot) {
@@ -162,20 +230,27 @@ function start(scene: ReturnType<typeof makeScene>) {
     standings.replaceChildren(...ranked.map((player, index) => {
       const row = document.createElement('li');
       row.style.color = PLAYER_COLORS[player.seat];
-      const name = player.seat === 0 ? 'White' : 'Blue';
-      row.textContent = `${tied ? 1 : index + 1}. ${name}${player.seat === seat ? ' (you)' : ''} · ${total(player.scores)} strokes`;
+      const heading = document.createElement('div');
+      heading.className = 'standing-player';
+      const icon = document.createElement('i');
+      icon.className = 'player-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      setPlayerIcon(icon, player.seat, player.profile?.avatar);
+      const label = document.createElement('span');
+      label.textContent = `${tied ? 1 : index + 1}. ${playerName(player)}${player.seat === seat ? ' (you)' : ''} · ${total(player.scores)} strokes`;
+      heading.append(icon, label);
       const detail = document.createElement('small');
       detail.textContent = 'By hole: ' + player.scores.join(' + ');
-      row.append(detail);
+      row.append(heading, detail);
       return row;
     }));
     standings.hidden = false;
-    replay.textContent = 'Back to practice';
+    replay.textContent = platformMatch ? 'Back to lobby' : 'Back to practice';
     result.hidden = false;
     replay.focus();
   }
 
-  const client = makeRoomClient({
+  const client = makeRoomClient(platformSession, {
     update(state, nextSeat) {
       const previous = room;
       const wasConnected = connected;
@@ -196,9 +271,10 @@ function start(scene: ReturnType<typeof makeScene>) {
         for (const player of state.players) {
           const before = previous.players.find((p) => p.seat === player.seat);
           if (!before) continue;
-          if (player.waterDrops > before.waterDrops && player.splash) scene.emit('splash', player.splash, player.seat);
-          else if (player.strokes > before.strokes) scene.emit('putt', before.ball, player.seat);
-          if (player.ball.sunk && !before.ball.sunk) scene.emit('cup', player.ball, player.seat);
+          if ((player.ball.impacts ?? 0) > (before.ball.impacts ?? 0)) audio.play('bounce', player.seat === nextSeat);
+          if (player.waterDrops > before.waterDrops && player.splash) cue('splash', player.splash, player.seat);
+          else if (player.strokes > before.strokes) cue('putt', before.ball, player.seat);
+          if (player.ball.sunk && !before.ball.sunk) cue('cup', player.ball, player.seat);
         }
       }
       room = state;
@@ -214,7 +290,7 @@ function start(scene: ReturnType<typeof makeScene>) {
       else sinkTime ??= receivedAt;
       updateRoomUI();
       if (state.phase === 'waiting') {
-        lobbyStatus.textContent = state.players.length === 2 ? 'Waiting for your friend to reconnect…' : '';
+        lobbyStatus.textContent = !platformMatch && state.players.length === 2 ? 'Waiting for your friend to reconnect…' : '';
         showLobby();
       } else {
         if (lobby.open) {
@@ -226,7 +302,7 @@ function start(scene: ReturnType<typeof makeScene>) {
         if (state.phase === 'between') {
           get('turnover-title').textContent = `Next: ${COURSES[hole + 1].name}`;
           get('turnover-scores').textContent = state.players.map((p) =>
-            `${p.seat === 0 ? 'White' : 'Blue'} ${p.score} this hole · ${total(p.scores)} total`).join('  /  ');
+            `${playerName(p)} ${p.score} this hole · ${total(p.scores)} total`).join('  /  ');
         }
         const notice = state.phase !== 'playing' ? ''
           : receivedAt < noticeUntil ? 'Splash! +1 stroke.'
@@ -268,7 +344,7 @@ function start(scene: ReturnType<typeof makeScene>) {
     canvas.focus({ preventScroll: true });
   });
   roomButton.addEventListener('click', () => {
-    if (room) returnToPractice();
+    if (platformMatch || room) returnToPractice();
     else showLobby();
   });
   createRoom.addEventListener('click', () => client.open({ type: 'create' }));
@@ -298,8 +374,7 @@ function start(scene: ReturnType<typeof makeScene>) {
 
   function finish(title: string, sunk: boolean) {
     finished = true;
-    drag = null;
-    aim = null;
+    cancelAim();
     get('result-title').textContent = title;
     get('result-score').textContent = sunk ? `${strokes} ${strokes === 1 ? 'stroke' : 'strokes'}` : '7 strokes';
     result.hidden = false;
@@ -309,16 +384,23 @@ function start(scene: ReturnType<typeof makeScene>) {
   function putt() {
     const shot = aim;
     aim = null;
+    audio.stopPull();
     if (!ready() || !shot || shot.power < 0.035) return;
     const now = performance.now();
     if (room) {
-      if (client.send({ type: 'shot', ...shot, stroke: strokes, hole })) pendingShotUntil = now + 750;
+      if (client.send({ type: 'shot', ...shot, stroke: strokes, hole })) {
+        pendingShotUntil = now + 750;
+        audio.play('snap');
+        scene.releaseSling(displayedBall, shot);
+      }
       return;
     }
     if (deadline !== null && now >= deadline) return;
-    deadline ??= now + HOLE_SECONDS * 1000;
+    deadline ??= now + COURSES[hole].seconds * 1000;
     lie = { x: ball.x, z: ball.z };
-    scene.emit('putt', ball, seat);
+    audio.play('snap');
+    scene.releaseSling(displayedBall, shot);
+    cue('putt', ball, seat);
     strokes++;
     instructions.hidden = true;
     launch(ball, shot.angle, shot.power);
@@ -331,6 +413,7 @@ function start(scene: ReturnType<typeof makeScene>) {
     const dx = drag.origin.x - point.x;
     const dz = drag.origin.z - point.z;
     aim = { angle: Math.atan2(dz, dx), power: Math.min(1, Math.hypot(dx, dz) / 2.35) };
+    audio.pull(aim.power);
   }
 
   canvas.addEventListener('pointerdown', (event) => {
@@ -356,12 +439,18 @@ function start(scene: ReturnType<typeof makeScene>) {
     canvas.addEventListener(type, (event) => {
       if (drag?.pointerId !== (event as PointerEvent).pointerId) return;
       drag = null;
-      aim = null;
+      cancelAim();
     });
   }
 
+  window.addEventListener('blur', cancelAim);
   canvas.addEventListener('keydown', (event) => {
-    if (!ready() || drag || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', 'Escape'].includes(event.key)) return;
+    if (event.key === 'Escape' && (drag || aim)) {
+      event.preventDefault();
+      cancelAim();
+      return;
+    }
+    if (!ready() || drag || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(event.key)) return;
     event.preventDefault();
     aim ??= { angle: COURSES[hole].initialAngle, power: 0.45 };
     if (event.key === 'ArrowLeft') aim.angle -= 0.05;
@@ -369,7 +458,7 @@ function start(scene: ReturnType<typeof makeScene>) {
     if (event.key === 'ArrowUp') aim.power = Math.min(1, aim.power + 0.045);
     if (event.key === 'ArrowDown') aim.power = Math.max(0.045, aim.power - 0.045);
     if (event.key === ' ' && !event.repeat) putt();
-    if (event.key === 'Escape') aim = null;
+    else if (aim) audio.pull(aim.power);
   });
 
   replay.addEventListener('click', () => {
@@ -380,7 +469,15 @@ function start(scene: ReturnType<typeof makeScene>) {
     }
   });
   resetPractice();
-  client.resume();
+  if (platformMatch) {
+    if (platformSession && launchToken) client.open({ type: 'join-naka', sessionId: platformSession, token: launchToken });
+    else if (!platformSession || !client.resume()) {
+      updateRoomUI();
+      lobbyStatus.textContent = 'Open the match again from the Naka Lite lobby.';
+      showLobby();
+    }
+    toPlatform({ type: 'ready' });
+  } else client.resume();
 
   const observer = new ResizeObserver(() => scene.resize());
   observer.observe(canvas);
@@ -391,7 +488,7 @@ function start(scene: ReturnType<typeof makeScene>) {
     const elapsed = room ? (room.elapsedMs + (inPlay ? Math.min(now - receivedAt, 150) : 0)) / 1000
       : (now - practiceStartedAt) / 1000;
     const remaining = room ? room.remainingMs - (inPlay || room.phase === 'between' ? now - receivedAt : 0)
-      : deadline === null ? HOLE_SECONDS * 1000 : deadline - now;
+      : deadline === null ? COURSES[hole].seconds * 1000 : deadline - now;
     const seconds = Math.max(0, Math.ceil(remaining / 1000));
     if (!turnover.hidden) {
       const text = `Starts in ${seconds}s`;
@@ -403,11 +500,12 @@ function start(scene: ReturnType<typeof makeScene>) {
         ball.vx = ball.vz = 0;
         finish('Time’s up', false);
       } else {
+        const priorImpacts = ball.impacts ?? 0;
         accumulator += Math.min((now - last) / 1000, 0.1);
         while (accumulator >= STEP) {
           const splash = moving(ball) ? stepPutt(ball, hole, Math.max(0, elapsed - accumulator), lie) : null;
           if (splash) {
-            scene.emit('splash', splash, seat);
+            cue('splash', splash, seat);
             strokes++;
             instructions.textContent = 'Splash! +1 stroke.';
             instructions.hidden = false;
@@ -415,10 +513,11 @@ function start(scene: ReturnType<typeof makeScene>) {
           }
           accumulator -= STEP;
         }
+        if ((ball.impacts ?? 0) > priorImpacts) audio.play('bounce');
         if (ball.sunk) {
           if (sinkTime === null) {
             sinkTime = now;
-            scene.emit('cup', ball, seat);
+            cue('cup', ball, seat);
           }
           if (now - sinkTime > 480) finish(strokes === 1 ? 'Hole in one!' : 'Nicely putted!', true);
         } else if (strokes >= SHOT_LIMIT && !moving(ball)) {

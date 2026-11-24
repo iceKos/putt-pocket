@@ -9,7 +9,6 @@ const GARDEN: readonly Point[] = [
 export const BALL_RADIUS = 0.195;
 export const CUP_RADIUS = 0.34;
 export const SHOT_LIMIT = 6;
-export const HOLE_SECONDS = 75;
 export const STEP = 1 / 120;
 const MAX_SPEED = 12.6;
 const FRICTION = 2.9;
@@ -18,8 +17,26 @@ const BOUNCE = 0.83;
 const rectangle = (left: number, top: number, right: number, bottom: number): Point[] => [
   { x: left, z: top }, { x: right, z: top }, { x: right, z: bottom }, { x: left, z: bottom },
 ];
-export const BRIDGE = { left: -1.2, right: 1.0, top: -2.05, bottom: 3.45, deckTop: 0.2, deckBottom: 1.16 };
-export const MILL = { x: -2.4, z: -0.55, length: 1.55, speed: 1.33, width: 0.26 };
+export const BRIDGE = { left: -1.2, right: 1.0, top: -2.05, bottom: 3.45, deckTop: -0.13, deckBottom: 0.67 };
+export const MARKET_BASKETS = [
+  { x: 2.48, z: 1.23, radius: 0.36 },
+  { x: -2.39, z: -0.43, radius: 0.36 },
+] as const;
+export const ARENA_SAND = { x: -0.08, z: 0.02, width: 2.75, depth: 1.86 };
+export const ARENA_COLUMNS = [
+  { x: 1.53, z: 0.39, radius: 0.39 },
+  { x: -1.27, z: -0.82, radius: 0.41 },
+  { x: -0.22, z: 1.62, radius: 0.33 },
+] as const;
+export const ALPINE_ICE = { x: -0.10, z: -0.18, width: 2.95, depth: 1.10 };
+
+function inArenaSand(x: number, z: number): boolean {
+  return ((x - ARENA_SAND.x) / ARENA_SAND.width) ** 2 + ((z - ARENA_SAND.z) / ARENA_SAND.depth) ** 2 < 1;
+}
+
+function onAlpineIce(x: number, z: number): boolean {
+  return ((x - ALPINE_ICE.x) / ALPINE_ICE.width) ** 2 + ((z - ALPINE_ICE.z) / ALPINE_ICE.depth) ** 2 < 1;
+}
 export const BUMPERS = [
   { x: 1.4, z: 0.28, radius: 0.48 },
   { x: -0.65, z: 1.67, radius: 0.57 },
@@ -34,32 +51,87 @@ export const gateLift = (elapsed: number): number => {
   const t = elapsed % 4.8;
   return Math.max(0, Math.min(1, (t - 1.35) / 0.55, (4.15 - t) / 0.55)) * 0.96;
 };
+export const WALL_SWITCHBACKS = [
+  { x: 1.85, from: -1.65, to: 3.45, radius: 0.20 },
+  { x: -1.55, from: -3.65, to: 1.30, radius: 0.20 },
+] as const;
+export const HANOK_GATES = [
+  { x: 1.42, from: 0.23, to: 1.65, phase: 0, radius: 0.17 },
+  { x: -1.58, from: -1.61, to: -0.14, phase: 2.75, radius: 0.17 },
+] as const;
+export const HANOK_CYCLE = 5.5;
+export const hanokGateLift = (elapsed: number, phase: number) => {
+  const t = (elapsed + phase) % HANOK_CYCLE;
+  return Math.max(0, Math.min(1, (t - 0.4) / 0.35, (3.0 - t) / 0.35)) * 0.91;
+};
+export const gateClearsBall = (lift: number) => lift >= BALL_RADIUS * 2 + 0.04;
+export const YUCATAN_CHUTE = {
+  x: 0.30, from: -0.70, to: 0.51, radius: 0.16,
+  walls: [[-1.69, -0.70], [0.51, 1.70]] as const,
+  divider: { from: -2.95, to: -0.52, z: 0.22, radius: 0.15 },
+};
+export const FJORD_WIND = { left: -2.85, right: 2.95, top: -1.27, bottom: 2.55 };
+export const SHELTER_ROCKS = [
+  { x: -1.74, z: -1.48, radius: 0.38 },
+  { x: -0.30, z: -1.54, radius: 0.45 },
+  { x: 1.22, z: -1.57, radius: 0.41 },
+] as const;
+
+export function fjordWind(seconds: number): number {
+  const swell = Math.sin(seconds * 1.08 + 0.72);
+  return Math.sign(swell) * Math.max(0, Math.abs(swell) - 0.23) * 3.20;
+}
+
+function ease(value: number): number {
+  const t = Math.max(0, Math.min(1, value));
+  return t * t * (3 - 2 * t);
+}
+
 export function groundHeight(hole: number, x: number, z: number): number {
+  if (hole === 8) {
+    const rise = ease((x - 0.37) / 1.12);
+    const teeEdge = ease((5.34 - x) / 0.84);
+    const terraceEdge = ease((1.68 - Math.abs(z - 0.02)) / 0.65);
+    return 0.58 * rise * teeEdge * terraceEdge;
+  }
   if (hole !== 3) return 0;
   const across = Math.max(0, 1 - (x / 2.24) ** 2);
   const lane = Math.max(0, 1 - ((z + 0.25) / 2.66) ** 2);
   return 0.86 * across ** 2 * lane ** 2;
 }
 const holes = [
-  { name: 'Kyoto Stone Garden', country: 'Japan', outline: GARDEN, start: { x: 3.05, z: 3.25 }, cup: { x: -4.38, z: -2.43 } },
-  { name: 'Floating Market', country: 'Thailand', outline: rectangle(-5.35, -3.65, 5.35, 3.45), start: { x: 4.25, z: 0.68 }, cup: { x: -4.25, z: 0.68 } },
-  { name: 'Tulip Windmill', country: 'Netherlands', outline: [
-    { x: -5.3, z: -3.65 }, { x: 2.7, z: -3.65 }, { x: 2.7, z: -1.4 },
-    { x: 5.25, z: -1.4 }, { x: 5.25, z: 3.35 }, { x: -5.3, z: 3.35 },
-  ], start: { x: 4.14, z: 1.65 }, cup: { x: -4.25, z: -1.12 } },
-  { name: 'Highland Ridge', country: 'Scotland', outline: rectangle(-5.35, -3.65, 5.35, 3.45),
-    start: { x: 4.15, z: -0.18 }, cup: { x: -3.85, z: -0.18 } },
-  { name: 'Barcelona Mosaic', country: 'Spain', outline: [
+  { name: 'Kyoto Stone Garden', country: 'Japan', flag: 'jp', outline: GARDEN, start: { x: 3.05, z: 3.25 }, cup: { x: -4.38, z: -2.43 } },
+  { name: 'Floating Market', country: 'Thailand', flag: 'th', outline: rectangle(-5.35, -3.65, 5.35, 3.45), start: { x: 4.25, z: 1.95 }, cup: { x: -4.25, z: -1.02 } },
+  { name: 'Colosseum Arena', country: 'Italy', flag: 'it', outline: [
+    { x: -5.35, z: -2.12 }, { x: -4.43, z: -3.19 }, { x: -2.54, z: -3.66 },
+    { x: 2.55, z: -3.66 }, { x: 4.40, z: -3.18 }, { x: 5.35, z: -2.18 },
+    { x: 5.35, z: 2.26 }, { x: 4.36, z: 3.15 }, { x: 2.54, z: 3.52 },
+    { x: -2.55, z: 3.52 }, { x: -4.37, z: 3.16 }, { x: -5.35, z: 2.20 },
+  ], start: { x: 4.17, z: 1.05 }, cup: { x: -4.21, z: -1.13 } },
+  { name: 'Alpine Ice Run', country: 'Switzerland', flag: 'ch', outline: rectangle(-5.35, -3.65, 5.35, 3.45),
+    start: { x: 4.15, z: -0.18 }, cup: { x: -3.85, z: -0.76 } },
+  { name: 'Barcelona Mosaic', country: 'Spain', flag: 'es', outline: [
     { x: -5.35, z: -2.52 }, { x: -4.22, z: -3.64 }, { x: 1.45, z: -3.64 },
     { x: 2.65, z: -2.42 }, { x: 4.1, z: -2.42 }, { x: 5.35, z: -1.32 },
     { x: 5.35, z: 2.33 }, { x: 4.1, z: 3.5 }, { x: -3.28, z: 3.5 }, { x: -5.35, z: 1.52 },
   ], start: { x: 4.02, z: 1.28 }, cup: { x: -4.05, z: -1.88 } },
-  { name: 'Gates of the Nile', country: 'Egypt', outline: rectangle(-5.35, -3.65, 5.35, 3.45),
+  { name: 'Gates of the Nile', country: 'Egypt', flag: 'eg', outline: rectangle(-5.35, -3.65, 5.35, 3.45),
     start: { x: 4.25, z: 0 }, cup: { x: -4.2, z: 0 } },
+  { name: 'Great Wall Switchbacks', country: 'China', flag: 'cn', outline: rectangle(-5.35, -3.65, 5.35, 3.45),
+    start: { x: 4.25, z: 1.48 }, cup: { x: -4.15, z: -0.72 } },
+  { name: 'Hanok Courtyard', country: 'South Korea', flag: 'kr', outline: rectangle(-5.35, -3.65, 5.35, 3.45),
+    start: { x: 4.19, z: 1.31 }, cup: { x: -4.16, z: -1.18 } },
+  { name: 'Yucatan Temple Terraces', country: 'Mexico', flag: 'mx', outline: rectangle(-5.35, -3.65, 5.35, 3.45),
+    start: { x: 4.18, z: 0.65 }, cup: { x: -4.19, z: -0.95 } },
+  { name: 'Northern Lights Fjord', country: 'Norway', flag: 'no', outline: [
+    { x: -5.35, z: -2.36 }, { x: -4.15, z: -3.65 }, { x: 3.73, z: -3.65 }, { x: 5.35, z: -2.21 },
+    { x: 5.35, z: 2.2 }, { x: 4.33, z: 3.40 }, { x: -4.2, z: 3.40 }, { x: -5.35, z: 2.3 },
+  ], start: { x: 4.23, z: 0.74 }, cup: { x: -4.22, z: -0.55 } },
 ] as const;
 export const COURSES = holes.map((hole, index) => ({
   ...hole,
-  initialAngle: index === 0 ? -Math.PI / 2 : Math.PI,
+  initialAngle: index === 0 || index === 6 ? -Math.PI / 2 : Math.PI,
+  seconds: index < 6 ? 52 : 67,
   walls: hole.outline.map((from, index) => {
     const to = hole.outline[(index + 1) % hole.outline.length];
     const dx = to.x - from.x;
@@ -74,7 +146,7 @@ export function waterAt(x: number, z: number): boolean {
     && (z < BRIDGE.deckTop || z > BRIDGE.deckBottom);
 }
 
-export type Ball = Point & { vx: number; vz: number; sunk: boolean };
+export type Ball = Point & { vx: number; vz: number; sunk: boolean; impacts?: number };
 export const createBall = (hole = 0): Ball => ({ ...COURSES[hole].start, vx: 0, vz: 0, sunk: false });
 export const moving = (ball: Ball) => ball.vx !== 0 || ball.vz !== 0;
 
@@ -87,11 +159,16 @@ export function launch(ball: Ball, angle: number, power: number): void {
 
 export function stepBall(ball: Ball, hole = 0, elapsedSeconds = 0): void {
   if (!moving(ball) || ball.sunk) return;
-  if (hole === 3) {
+  const previousX = ball.x;
+  if (hole === 3 || hole === 8) {
     const sample = 0.015;
     const gravity = 8 * STEP / (2 * sample);
     ball.vx -= gravity * (groundHeight(hole, ball.x + sample, ball.z) - groundHeight(hole, ball.x - sample, ball.z));
     ball.vz -= gravity * (groundHeight(hole, ball.x, ball.z + sample) - groundHeight(hole, ball.x, ball.z - sample));
+  }
+  if (hole === 9 && ball.x > FJORD_WIND.left && ball.x < FJORD_WIND.right
+    && ball.z > FJORD_WIND.top && ball.z < FJORD_WIND.bottom) {
+    ball.vz += fjordWind(elapsedSeconds) * STEP;
   }
   ball.x += ball.vx * STEP;
   ball.z += ball.vz * STEP;
@@ -112,21 +189,53 @@ export function stepBall(ball: Ball, hole = 0, elapsedSeconds = 0): void {
     ball.z += nz * overlap;
     const normalSpeed = ball.vx * nx + ball.vz * nz;
     if (normalSpeed < 0) {
+      recordImpact(ball, -normalSpeed);
       ball.vx -= (1 + BOUNCE) * normalSpeed * nx;
       ball.vz -= (1 + BOUNCE) * normalSpeed * nz;
     }
   }
 
-  if (hole === 2) meetWindmill(ball, elapsedSeconds);
+  if (hole === 1) {
+    for (const basket of MARKET_BASKETS) bounceOff(ball, basket.x, basket.z, basket.radius, 0.58);
+  }
+  if (hole === 2) {
+    for (const column of ARENA_COLUMNS) bounceOff(ball, column.x, column.z, column.radius, 0.68);
+  }
   if (hole === 4) {
     for (const bumper of BUMPERS) bounceOff(ball, bumper.x, bumper.z, bumper.radius, 1.12);
   }
   if (hole === 5) {
-    for (const [from, to] of GATE.walls) bounceOff(ball, GATE.x, Math.max(from, Math.min(to, ball.z)), GATE.radius);
-    if (gateLift(elapsedSeconds) < BALL_RADIUS * 2 + 0.04) {
-      const [from, to] = GATE.span;
-      bounceOff(ball, GATE.x, Math.max(from, Math.min(to, ball.z)), GATE.radius);
+    for (const [from, to] of GATE.walls) bounceOnWall(ball, GATE.x, from, to, GATE.radius);
+    if (!gateClearsBall(gateLift(elapsedSeconds))) bounceOnWall(ball, GATE.x, ...GATE.span, GATE.radius);
+  }
+  if (hole === 6) {
+    for (const wall of WALL_SWITCHBACKS) bounceOnWall(ball, wall.x, wall.from, wall.to, wall.radius);
+  }
+  if (hole === 7) {
+    for (const gate of HANOK_GATES) {
+      bounceOnWall(ball, gate.x, -3.65, gate.from, gate.radius);
+      bounceOnWall(ball, gate.x, gate.to, 3.45, gate.radius);
+      if (!gateClearsBall(hanokGateLift(elapsedSeconds, gate.phase))) {
+        bounceOnWall(ball, gate.x, gate.from, gate.to, gate.radius);
+      }
     }
+  }
+  if (hole === 8) {
+    for (const [from, to] of YUCATAN_CHUTE.walls) {
+      bounceOnWall(ball, YUCATAN_CHUTE.x, from, to, YUCATAN_CHUTE.radius);
+    }
+    const lip = YUCATAN_CHUTE.x - BALL_RADIUS;
+    if (previousX <= YUCATAN_CHUTE.x && ball.x >= lip && ball.vx > 0
+      && ball.z > YUCATAN_CHUTE.from && ball.z < YUCATAN_CHUTE.to) {
+      recordImpact(ball, ball.vx);
+      ball.x = lip;
+      ball.vx *= -BOUNCE;
+    }
+    const divider = YUCATAN_CHUTE.divider;
+    bounceOff(ball, Math.max(divider.from, Math.min(divider.to, ball.x)), divider.z, divider.radius);
+  }
+  if (hole === 9) {
+    for (const rock of SHELTER_ROCKS) bounceOff(ball, rock.x, rock.z, rock.radius, 0.62);
   }
   const cup = COURSES[hole].cup;
   const speed = Math.hypot(ball.vx, ball.vz);
@@ -134,7 +243,10 @@ export function stepBall(ball: Ball, hole = 0, elapsedSeconds = 0): void {
     Object.assign(ball, cup, { vx: 0, vz: 0, sunk: true });
     return;
   }
-  const remaining = Math.min(MAX_SPEED * 1.1, Math.max(0, speed - FRICTION * STEP));
+  let friction = FRICTION;
+  if (hole === 2 && inArenaSand(ball.x, ball.z)) friction = 7.9;
+  if (hole === 3 && onAlpineIce(ball.x, ball.z)) friction = 0.63;
+  const remaining = Math.min(MAX_SPEED * 1.1, Math.max(0, speed - friction * STEP));
   const ratio = speed > 0 ? remaining / speed : 0;
   ball.vx *= ratio;
   ball.vz *= ratio;
@@ -146,6 +258,14 @@ export function stepPutt(ball: Ball, hole: number, elapsedSeconds: number, lie: 
   const splash = { x: ball.x, z: ball.z };
   Object.assign(ball, lie, { vx: 0, vz: 0 });
   return splash;
+}
+
+function recordImpact(ball: Ball, speed: number) {
+  if (speed >= 0.55) ball.impacts = (ball.impacts ?? 0) + 1;
+}
+
+function bounceOnWall(ball: Ball, x: number, from: number, to: number, radius: number) {
+  bounceOff(ball, x, Math.max(from, Math.min(to, ball.z)), radius);
 }
 
 function bounceOff(ball: Ball, x: number, z: number, radius: number, bounce = BOUNCE) {
@@ -160,32 +280,8 @@ function bounceOff(ball: Ball, x: number, z: number, radius: number, bounce = BO
   ball.z += nz * (contact - distance);
   const speed = ball.vx * nx + ball.vz * nz;
   if (speed < 0) {
+    recordImpact(ball, -speed);
     ball.vx -= (1 + bounce) * speed * nx;
     ball.vz -= (1 + bounce) * speed * nz;
-  }
-}
-
-function meetWindmill(ball: Ball, elapsed: number) {
-  const spin = elapsed * MILL.speed;
-  for (let arm = 0; arm < 4; arm++) {
-    const angle = spin + arm * Math.PI / 2;
-    const ux = Math.cos(angle);
-    const uz = Math.sin(angle);
-    const distanceAlong = Math.max(0, Math.min(MILL.length, (ball.x - MILL.x) * ux + (ball.z - MILL.z) * uz));
-    const dx = ball.x - MILL.x - ux * distanceAlong;
-    const dz = ball.z - MILL.z - uz * distanceAlong;
-    const distance = Math.hypot(dx, dz);
-    const radius = BALL_RADIUS + MILL.width * 0.5;
-    if (distance >= radius) continue;
-    const nx = distance > 1e-6 ? dx / distance : -uz;
-    const nz = distance > 1e-6 ? dz / distance : ux;
-    ball.x += nx * (radius - distance);
-    ball.z += nz * (radius - distance);
-    const armNormalSpeed = MILL.speed * distanceAlong * (-uz * nx + ux * nz);
-    const speedIntoArm = ball.vx * nx + ball.vz * nz - armNormalSpeed;
-    if (speedIntoArm < 0) {
-      ball.vx -= 1.55 * speedIntoArm * nx;
-      ball.vz -= 1.55 * speedIntoArm * nz;
-    }
   }
 }

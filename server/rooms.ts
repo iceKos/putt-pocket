@@ -1,13 +1,16 @@
 import { randomBytes, randomInt } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
-import { COURSES, createBall, HOLE_SECONDS, launch, moving, SHOT_LIMIT, STEP, stepPutt, TURNOVER_SECONDS, type Point } from '../src/golf.ts';
-import type { PlayerSnapshot, RoomMessage, RoomSnapshot, Seat } from '../src/room-protocol.ts';
+import { createNakaPlatform, NakaPlatformError, type RosterPlayer } from '../docs/game-kit/naka-platform.ts';
+import { COURSES, createBall, launch, moving, SHOT_LIMIT, STEP, stepPutt, TURNOVER_SECONDS, type Point } from '../src/golf.ts';
+import type { PlayerProfile, PlayerSnapshot, RoomMessage, RoomSnapshot, Seat } from '../src/room-protocol.ts';
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ROOM_TTL = 5 * 60_000;
 type Player = {
   seat: Seat;
+  userId?: string;
+  profile?: PlayerProfile;
   socket: WebSocket | null;
   token: string;
   ball: ReturnType<typeof createBall>;
@@ -41,13 +44,13 @@ function send(socket: WebSocket | null, message: RoomMessage) {
 
 function snapshot(room: Room, now = performance.now()): RoomSnapshot {
   const players: PlayerSnapshot[] = room.players.map((p) => ({
-    seat: p.seat, strokes: p.strokes, score: p.score,
+    seat: p.seat, profile: p.profile, strokes: p.strokes, score: p.score,
     scores: p.scores, waterDrops: p.waterDrops, splash: p.splash,
     ball: p.ball, connected: p.socket?.readyState === WebSocket.OPEN,
   }));
   return {
     code: room.code, phase: room.phase, players, hole: room.hole, elapsedMs: room.elapsedMs,
-    remainingMs: room.phase === 'waiting' ? HOLE_SECONDS * 1000 : Math.max(0, room.deadline - now),
+    remainingMs: room.phase === 'waiting' ? COURSES[room.hole].seconds * 1000 : Math.max(0, room.deadline - now),
   };
 }
 
@@ -57,8 +60,12 @@ function broadcast(room: Room, now?: number) {
 }
 
 export function attachRooms() {
-  const server = new WebSocketServer({ noServer: true, maxPayload: 1024 });
+  const server = new WebSocketServer({ noServer: true, maxPayload: 4096 });
   const rooms = new Map<string, Room>();
+  const apiUrl = process.env.NAKA_API_URL;
+  const serverKey = process.env.NAKA_SERVER_KEY;
+  const platform = process.env.PLATFORM === 'naka' && apiUrl && serverKey
+    ? createNakaPlatform({ apiUrl, serverKey, log: () => {} }) : null;
   function removePlayer({ room, player }: Membership) {
     player.socket = null;
     player.token = '';
@@ -77,6 +84,7 @@ export function attachRooms() {
 
   server.on('connection', (socket) => {
     let membership: Membership | undefined;
+    let identifying = false;
     let messageCount = 0;
     let windowStart = performance.now();
     let alive = true;
@@ -101,6 +109,43 @@ export function attachRooms() {
       if (previous && previous !== socket) previous.close(4001, 'Joined from another tab');
       send(socket, { type: 'joined', code: room.code, token: player.token, seat: player.seat, room: snapshot(room) });
       broadcast(room);
+    }
+
+    async function joinNaka(sessionId: unknown, token: unknown) {
+      if (!platform) return reject('Naka Lite sign-in is unavailable for this game server.', true);
+      if (typeof sessionId !== 'string' || !sessionId || sessionId.length > 128
+        || typeof token !== 'string' || !token || token.length > 3600) {
+        return reject('Open the match again from the Naka Lite lobby.', true);
+      }
+      identifying = true;
+      try {
+        const { player, session } = await platform.identify(token);
+        if (socket.readyState !== WebSocket.OPEN) return;
+        if (session.sessionId !== sessionId || session.status !== 'launching'
+          || session.roster.length !== 2 || session.roster[0].userId === session.roster[1].userId
+          || !session.roster.some((entry) => entry.userId === player.userId)) {
+          return reject('This Naka Lite match needs two verified players.', true);
+        }
+        const code = `naka:${session.sessionId}`;
+        const now = performance.now();
+        let room = rooms.get(code);
+        if (room && room.expires <= now) return reject('This room has expired.', true);
+        if (!room) {
+          if (rooms.size >= 250) return reject('All rooms are busy. Try again in a minute.', true);
+          const [first, second] = session.roster;
+          room = makeRoom(code, [makePlayer(0, first), makePlayer(1, second)], now);
+          rooms.set(code, room);
+        }
+        const member = room.players.find((entry) => entry.userId === player.userId);
+        if (!member?.token) return reject('You no longer have a seat in this match.', true);
+        const profile = playerProfile(player);
+        member.profile = { ...member.profile, ...profile };
+        connect(room, member);
+      } catch (error) {
+        reject(error instanceof NakaPlatformError ? error.message : 'Could not verify this Naka Lite match.', true);
+      } finally {
+        identifying = false;
+      }
     }
 
     socket.on('message', (raw, binary) => {
@@ -141,14 +186,17 @@ export function attachRooms() {
         return;
       }
 
-      if (command.type === 'create') {
+      if (identifying) return;
+      if (command.type === 'join-naka') {
+        void joinNaka(command.sessionId, command.token);
+      } else if (command.type === 'create') {
         if (rooms.size >= 250) return reject('All rooms are busy. Try again in a minute.', true);
         let code: string;
         do {
           code = Array.from({ length: 5 }, () => ALPHABET[randomInt(ALPHABET.length)]).join('');
         } while (rooms.has(code));
         const player = makePlayer(0);
-        const room: Room = { code, players: [player], phase: 'waiting', deadline: 0, expires: now + ROOM_TTL, hole: 0, startedAt: 0, elapsedMs: 0 };
+        const room = makeRoom(code, [player], now);
         rooms.set(code, room);
         connect(room, player);
       } else if (command.type === 'join' || command.type === 'resume') {
@@ -201,7 +249,7 @@ export function attachRooms() {
         broadcast(room, now);
       }
       if (room.phase !== 'playing') continue;
-      room.elapsedMs = Math.max(0, Math.min(HOLE_SECONDS * 1000, now - room.startedAt));
+      room.elapsedMs = Math.max(0, Math.min(COURSES[room.hole].seconds * 1000, now - room.startedAt));
       for (const player of room.players) {
         if (player.score !== null) continue;
         if (now >= room.deadline) {
@@ -252,16 +300,30 @@ export function attachRooms() {
   };
 }
 
-function makePlayer(seat: Seat): Player {
+function makeRoom(code: string, players: Player[], now: number): Room {
+  return { code, players, phase: 'waiting', deadline: 0, expires: now + ROOM_TTL, hole: 0, startedAt: 0, elapsedMs: 0 };
+}
+
+function playerProfile(player: RosterPlayer): PlayerProfile {
+  const username = typeof player.username === 'string' ? Array.from(player.username.trim()).slice(0, 80).join('') : '';
+  if (typeof player.avatar === 'string' && player.avatar.length <= 1024 && URL.canParse(player.avatar)) {
+    const url = new URL(player.avatar);
+    if (url.protocol === 'https:' && !url.username && !url.password) return { username, avatar: url.href };
+  }
+  return { username };
+}
+
+function makePlayer(seat: Seat, player?: RosterPlayer): Player {
   const ball = createBall();
-  return { seat, token: randomBytes(24).toString('hex'), socket: null, ball, lie: { ...ball }, strokes: 0, score: null, scores: [], waterDrops: 0, splash: null };
+  return { seat, userId: player?.userId, profile: player && playerProfile(player),
+    token: randomBytes(24).toString('hex'), socket: null, ball, lie: { ...ball }, strokes: 0, score: null, scores: [], waterDrops: 0, splash: null };
 }
 
 function beginHole(room: Room, now: number) {
   room.phase = 'playing';
   room.startedAt = now;
   room.elapsedMs = 0;
-  room.deadline = now + HOLE_SECONDS * 1000;
+  room.deadline = now + COURSES[room.hole].seconds * 1000;
   room.expires = room.deadline + ROOM_TTL;
   for (const player of room.players) {
     player.ball = createBall(room.hole);
