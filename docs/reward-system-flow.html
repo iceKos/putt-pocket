@@ -1,0 +1,866 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reward System Flow</title>
+<style>
+  :root {
+    --bg: #0e1320;
+    --panel: #172033;
+    --panel-2: #1e2940;
+    --line: #2c3a57;
+    --text: #e9edf6;
+    --muted: #9aa7c0;
+    --fe: #2dd4bf;      /* ผู้เล่น / FE */
+    --be: #fbbf24;      /* Platform BE */
+    --game: #a78bfa;    /* Game server */
+    --reward: #4ade80;
+    --warn: #fb7185;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html { scroll-snap-type: y proximity; scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Leelawadee UI", "Noto Sans Thai", "Sarabun", Tahoma, sans-serif;
+    line-height: 1.5;
+  }
+  section {
+    min-height: 100vh;
+    padding: 56px max(24px, 6vw);
+    display: flex; flex-direction: column; justify-content: center;
+    scroll-snap-align: start;
+    border-bottom: 1px solid var(--line);
+  }
+  .kicker { color: var(--muted); font-size: 17.5px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; }
+  h1 { font-size: clamp(37px, 5.5vw, 70px); line-height: 1.15; margin-bottom: 18px; }
+  h2 { font-size: clamp(29px, 3.4vw, 44px); line-height: 1.2; margin-bottom: 6px; }
+  .lead { color: var(--muted); font-size: clamp(18px, 1.7vw, 23px); max-width: 60ch; margin-bottom: 22px; }
+  .accent-fe { color: var(--fe); } .accent-be { color: var(--be); } .accent-game { color: var(--game); } .accent-reward { color: var(--reward); }
+
+  /* ---- title ---- */
+  .hero { align-items: flex-start; }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); font-size: 19px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  /* ---- pipeline ---- */
+  .pipe { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr auto 1.1fr auto 1fr; gap: 10px; align-items: center; margin-top: 12px; }
+  .node { background: var(--panel); border: 2px solid var(--line); border-radius: 16px; padding: 18px 16px; text-align: center; min-height: 140px; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
+  .node b { font-size: 22.5px; }
+  .node small { color: var(--muted); font-size: 16.5px; }
+  .node.game { border-color: var(--game); } .node.be { border-color: var(--be); } .node.reward { border-color: var(--reward); }
+  .stack { display: grid; gap: 10px; }
+  .stack .node { min-height: 0; padding: 12px; }
+  .arrow { color: var(--muted); font-size: 35px; text-align: center; }
+  .rule { margin-top: 36px; padding: 20px 24px; border-radius: 16px; background: linear-gradient(90deg, rgba(74,222,128,.14), rgba(74,222,128,.03)); border: 1px solid rgba(74,222,128,.4); font-size: clamp(19px, 2vw, 26px); }
+  .rule b { color: var(--reward); }
+
+  /* ---- swimlane ---- */
+  .swim { width: 100%; max-width: 1100px; height: auto; max-height: calc(100vh - 270px); margin: 8px auto 0; display: block; }
+  .swim text { font-family: inherit; }
+
+  /* ---- payout ---- */
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 24px; }
+  .card h3 { font-size: 27.5px; margin-bottom: 6px; }
+  .card p, .card li { color: var(--muted); font-size: 20px; }
+  .card ul { padding-left: 20px; display: grid; gap: 4px; margin-top: 10px; }
+  .bars { margin-top: 18px; display: grid; gap: 8px; }
+  .bar-row { display: grid; grid-template-columns: 76px 1fr 56px; gap: 10px; align-items: center; font-size: 19px; }
+  .bar { height: 22px; border-radius: 6px; background: linear-gradient(90deg, var(--reward), #22c55e); }
+  .bar-label { color: var(--muted); font-size: 16.5px; margin-top: 12px; }
+  .formula { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: var(--panel-2); font-family: Consolas, monospace; font-size: 19px; color: var(--text); }
+
+  /* ---- quest grid ---- */
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .q { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; position: relative; }
+  .q b { font-size: 24px; display: block; margin-bottom: 4px; }
+  .q span { color: var(--muted); font-size: 19px; }
+  .q.first { border-color: var(--reward); }
+  .tag { position: absolute; top: 12px; right: 14px; font-size: 15px; padding: 2px 10px; border-radius: 999px; background: rgba(74,222,128,.16); color: var(--reward); }
+  .tag.later { background: rgba(154,167,192,.16); color: var(--muted); }
+
+  /* ---- time_only: drops track ---- */
+  .strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 8px; }
+  .strip .chip { background: var(--panel-2); }
+  .strip .sep { color: var(--muted); }
+  .track-wrap { position: relative; height: 232px; margin: 18px 0 14px; }
+  .track { position: absolute; left: 0; right: 0; top: 57px; height: 10px; border-radius: 6px; background: var(--panel-2); border: 1px solid var(--line); }
+  .fill { position: absolute; left: 0; top: -1px; height: 10px; width: 52.8%; border-radius: 6px; background: linear-gradient(90deg, #22c55e, var(--reward)); }
+  .ms { position: absolute; top: 0; transform: translateX(-50%); width: 130px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+  .ms .t { font-weight: 700; font-size: 20px; height: 30px; }
+  .ms .c { width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; font-size: 16.5px; font-weight: 700; border: 3px solid var(--line); background: var(--bg); color: var(--muted); position: relative; z-index: 1; }
+  .ms .r { font-size: 20px; font-weight: 700; }
+  .ms .s { font-size: 16.5px; color: var(--muted); }
+  .ms.claimed .c { background: var(--reward); border-color: var(--reward); color: #0e1320; font-size: 25px; }
+  .ms.claimed .s { color: var(--reward); }
+  .ms.ready .c { border-color: var(--be); color: var(--be); background: var(--panel); }
+  .ms.ready .s { color: var(--be); font-weight: 600; }
+  .ms.locked .r { color: var(--muted); font-weight: 400; }
+  .stem { position: absolute; left: 52.8%; top: 67px; height: 110px; width: 2px; background: var(--reward); opacity: .7; }
+  .pin { position: absolute; left: 52.8%; top: 177px; transform: translateX(-50%); background: var(--reward); color: #0e1320; font-weight: 700; font-size: 17.5px; padding: 5px 14px; border-radius: 999px; white-space: nowrap; }
+  .note { color: var(--muted); font-size: 16.5px; text-align: right; margin-top: -6px; }
+
+  /* ---- AFK layers ---- */
+  .formula-strip { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px; margin-bottom: 22px; }
+  .cond { flex: 1 1 220px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; font-size: 19px; }
+  .cond b { display: block; font-size: 20px; margin-bottom: 2px; }
+  .cond span { color: var(--muted); font-size: 17.5px; }
+  .op { align-self: center; font-size: 32.5px; color: var(--muted); }
+  .result { flex: 1 1 160px; border-radius: 14px; padding: 14px 16px; background: rgba(74,222,128,.14); border: 1px solid rgba(74,222,128,.5); font-weight: 700; font-size: 22.5px; color: var(--reward); display: grid; place-items: center; text-align: center; }
+  .layer { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; position: relative; }
+  .layer .n { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--panel-2); font-size: 16.5px; font-weight: 700; margin-right: 8px; }
+  .layer b { font-size: 21.5px; }
+  .layer p { color: var(--muted); font-size: 18px; margin-top: 6px; }
+  .own { position: absolute; top: 14px; right: 14px; font-size: 15px; padding: 2px 10px; border-radius: 999px; }
+  .own.game { background: rgba(167,139,250,.18); color: var(--game); }
+  .own.be { background: rgba(251,191,36,.18); color: var(--be); }
+  .own.fe { background: rgba(45,212,191,.18); color: var(--fe); }
+  .layer.weak { border-style: dashed; }
+
+  /* ---- platform -> game channels ---- */
+  .api-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .api { background: var(--panel); border: 2px solid var(--line); border-radius: 18px; padding: 16px 20px 18px; position: relative; }
+  .api.rec { border-color: var(--reward); }
+  .api.opt { border-style: dashed; border-color: var(--muted); }
+  .api h3 { font-size: 24px; margin-bottom: 8px; padding-right: 110px; }
+  .api .badge { position: absolute; top: 14px; right: 16px; font-size: 15px; font-weight: 700; padding: 3px 12px; border-radius: 999px; }
+  .api.rec .badge { background: rgba(74,222,128,.18); color: var(--reward); }
+  .api.opt .badge { background: rgba(154,167,192,.18); color: var(--muted); }
+  .route { display: inline-flex; align-items: center; gap: 8px; font-size: 17px; margin-bottom: 10px; color: var(--text); }
+  .route .a { padding: 2px 10px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); }
+  .api p { color: var(--muted); font-size: 18px; margin-bottom: 6px; }
+  .api p b { color: var(--text); font-weight: 600; }
+  .trust { font-size: 16px; margin-top: 8px; }
+  .trust.ok { color: var(--reward); } .trust.ui { color: var(--warn); }
+  td.rec { color: var(--reward); font-weight: 600; }
+  td.alt { color: var(--muted); }
+
+  /* ---- gameplay mock ---- */
+  .mk { position: relative; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: #0b101b; box-shadow: 0 20px 60px rgba(0,0,0,.45); }
+  .mk-top { display: flex; align-items: center; gap: 14px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); font-size: 17px; }
+  .mk-logo { font-weight: 800; color: var(--reward); }
+  .mk-party { color: var(--muted); }
+  .mk-sp { flex: 1; }
+  .mk-coin { background: var(--panel-2); border: 1px solid var(--line); padding: 3px 14px; border-radius: 999px; font-weight: 700; color: var(--be); }
+  .mk-bell { position: relative; width: 34px; height: 34px; border-radius: 50%; background: var(--panel-2); display: grid; place-items: center; color: var(--text); }
+  .mk-bell i { position: absolute; top: 3px; right: 4px; width: 10px; height: 10px; border-radius: 50%; background: var(--warn); }
+  .mk-av { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--fe), var(--game)); }
+  .mk-body { display: grid; grid-template-columns: 2.1fr 1fr; height: 440px; }
+  .mk-game { position: relative; border-right: 2px dashed var(--game); background-color: #0f1828; background-image: linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px); background-size: 40px 40px; overflow: hidden; }
+  .lane { position: absolute; left: 0; right: 0; height: 25%; border-bottom: 1px dashed rgba(255,255,255,.12); }
+  .runner { position: absolute; top: 50%; transform: translate(-50%, -50%); width: 34px; height: 34px; border-radius: 50%; }
+  .runner span { position: absolute; left: 42px; top: 50%; transform: translateY(-50%); font-size: 15px; white-space: nowrap; color: var(--text); }
+  .finish { position: absolute; top: 0; bottom: 0; right: 28px; width: 18px; background: repeating-linear-gradient(0deg, #e9edf6 0 14px, #0e1320 14px 28px); opacity: .85; }
+  .hud { position: absolute; left: 14px; top: 12px; background: rgba(14,19,32,.8); border: 1px solid var(--line); padding: 4px 14px; border-radius: 999px; font-size: 16px; }
+  .mk-tag { position: absolute; left: 14px; bottom: 12px; font-size: 15px; color: var(--game); background: rgba(167,139,250,.16); padding: 3px 12px; border-radius: 8px; }
+  .mk-side { display: flex; flex-direction: column; background: var(--panel); min-width: 0; }
+  .mk-tabs { display: flex; border-bottom: 1px solid var(--line); font-size: 16px; }
+  .mk-tabs span { padding: 9px 16px; color: var(--muted); }
+  .mk-tabs .on { color: var(--text); border-bottom: 2px solid var(--reward); }
+  .mk-plist { position: relative; padding: 10px 14px; display: grid; gap: 6px; border-bottom: 1px solid var(--line); }
+  .mk-pl { display: flex; align-items: center; gap: 8px; font-size: 16px; }
+  .mk-pl .d { width: 22px; height: 22px; border-radius: 50%; flex: none; }
+  .mk-pl em { margin-left: auto; font-style: normal; font-size: 13px; color: var(--reward); }
+  .mk-chat { position: relative; flex: 1; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; font-size: 16px; overflow: hidden; }
+  .mk-chat b { color: var(--fe); font-weight: 600; }
+  .mk-input { margin: 0 14px 10px; padding: 8px 12px; border-radius: 10px; background: var(--panel-2); color: var(--muted); font-size: 15px; }
+  .mk-quest { position: relative; margin: 0 14px 14px; padding: 10px 12px; border-radius: 12px; background: rgba(74,222,128,.1); border: 1px solid rgba(74,222,128,.45); font-size: 15px; }
+  .mk-bar { height: 9px; border-radius: 5px; background: var(--panel-2); margin: 7px 0 4px; overflow: hidden; }
+  .mk-bar i { display: block; height: 100%; background: var(--reward); }
+  .mk-toast { position: absolute; top: 58px; right: 14px; z-index: 3; max-width: 300px; padding: 10px 14px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--be); font-size: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+  .mk-toast b { color: var(--be); }
+  .nm { position: absolute; z-index: 4; width: 30px; height: 30px; border-radius: 50%; background: var(--be); color: #0e1320; font-weight: 800; font-size: 16px; display: grid; place-items: center; box-shadow: 0 0 0 4px rgba(251,191,36,.3); }
+  .mk-legend { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 16px; }
+  .mk-legend div { font-size: 17px; color: var(--muted); }
+  .mk-legend b { color: var(--text); display: block; }
+  .mk-legend .nm { position: static; display: inline-grid; width: 26px; height: 26px; font-size: 14px; margin-right: 8px; box-shadow: none; vertical-align: middle; }
+  /* result + time panels */
+  .mk2 { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 20px 22px; }
+  .mk2 h3 { font-size: 24px; margin-bottom: 4px; }
+  .mk2 .sub { color: var(--muted); font-size: 16px; margin-bottom: 12px; }
+  .rank { display: grid; grid-template-columns: 44px 26px 1fr auto; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 10px; font-size: 19px; }
+  .rank + .rank { margin-top: 4px; }
+  .rank.me { background: rgba(74,222,128,.12); border: 1px solid rgba(74,222,128,.45); }
+  .rank .p { font-weight: 800; color: var(--muted); }
+  .rank .d { width: 22px; height: 22px; border-radius: 50%; }
+  .rank .c { font-weight: 700; color: var(--be); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .btns { display: flex; gap: 10px; margin-top: 14px; }
+  .btn { padding: 9px 20px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2); font-size: 17px; }
+  .btn.pri { background: var(--reward); color: #0e1320; border-color: var(--reward); font-weight: 700; }
+  .btn.sm { padding: 4px 16px; font-size: 16px; }
+  .tier { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; font-size: 19px; background: var(--panel-2); }
+  .tier + .tier { margin-top: 6px; }
+  .tier.done { color: var(--muted); }
+  .tier.locked { color: var(--muted); }
+  .afk { margin-top: 12px; padding: 10px 14px; border-radius: 12px; background: rgba(251,113,133,.12); border: 1px solid rgba(251,113,133,.5); color: var(--warn); font-size: 16px; }
+
+  /* ---- gameplay mock: full screen ---- */
+  section.full { height: 100vh; min-height: 0; padding: 14px 22px 16px; justify-content: flex-start; gap: 0; }
+  section.full .kicker { font-size: 15px; margin-bottom: 0; }
+  section.full h2 { font-size: 28px; margin-bottom: 8px; }
+  section.full .mk { flex: 1; display: flex; flex-direction: column; min-height: 0; border-radius: 14px; }
+  section.full .mk-top { padding: 12px 18px; font-size: 19px; }
+  section.full .mk-body { flex: 1; height: auto; min-height: 0; grid-template-columns: 2.4fr 1fr; }
+  section.full .mk-tabs { font-size: 18px; }
+  section.full .mk-pl { font-size: 18px; }
+  section.full .mk-chat { font-size: 18px; gap: 9px; }
+  section.full .mk-input { font-size: 17px; }
+  section.full .mk-quest { font-size: 17px; }
+  section.full .mk-toast { font-size: 18px; top: 66px; }
+  section.full .hud { font-size: 19px; left: 18px; top: 16px; }
+  section.full .mk-tag { font-size: 16px; }
+  section.full .runner { width: 46px; height: 46px; }
+  section.full .runner span { left: 56px; font-size: 18px; }
+  section.full .mk-legend { margin-top: 10px; gap: 10px; }
+  section.full .mk-legend div { font-size: 16px; }
+
+  /* ---- admin add-game mock ---- */
+  .adm-cols { flex: 1; display: grid; grid-template-columns: 1fr 1.15fr; min-height: 0; }
+  .adm-col { padding: 14px 24px; display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+  .adm-col.new { background: rgba(251,191,36,.05); border-left: 2px solid rgba(251,191,36,.55); }
+  .adm-h { font-size: 21px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+  .pill { font-size: 13px; font-weight: 700; padding: 2px 10px; border-radius: 999px; }
+  .pill.old { background: rgba(74,222,128,.18); color: var(--reward); }
+  .pill.nw { background: rgba(251,191,36,.2); color: var(--be); }
+  .pill.api { background: rgba(45,212,191,.18); color: var(--fe); }
+  .f label { display: block; font-size: 14.5px; color: var(--muted); margin-bottom: 2px; }
+  .f .in { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .f .in.ph { color: var(--muted); }
+  .f .hint { font-size: 14px; color: var(--muted); margin-top: 2px; }
+  .r3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .r2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .seg span { padding: 6px 16px; font-size: 17px; color: var(--muted); }
+  .seg .on { background: var(--reward); color: #0e1320; font-weight: 700; }
+  .ptag { display: inline-block; padding: 2px 12px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); font-size: 15px; margin-right: 6px; }
+  .chk { font-size: 16px; color: var(--text); margin-right: 14px; }
+  .chk.off { color: var(--muted); }
+  .adm-foot { display: flex; align-items: center; gap: 10px; padding: 10px 24px; border-top: 1px solid var(--line); background: var(--panel); }
+  .adm-foot .sp { flex: 1; color: var(--muted); font-size: 15px; }
+  .adm-note { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 10px; font-size: 16px; color: var(--muted); align-items: center; }
+  .adm-note b { color: var(--text); }
+
+  .rowlabel { margin: 14px 0 6px; }
+  section.full .swim { max-height: none; width: 100%; height: calc(100vh - 118px); max-width: none; margin: 4px auto 0; }
+
+  /* ---- security ---- */
+  .channels { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+  .ch { border-radius: 18px; padding: 22px 24px; border: 2px solid; background: var(--panel); }
+  .ch.ok { border-color: var(--reward); } .ch.ui { border-color: var(--warn); }
+  .ch h3 { font-size: 25px; margin-bottom: 6px; }
+  .ch p { color: var(--muted); font-size: 20px; }
+  .verdict { display: inline-block; margin-top: 10px; font-size: 17.5px; padding: 3px 12px; border-radius: 999px; font-weight: 600; }
+  .ok .verdict { background: rgba(74,222,128,.16); color: var(--reward); }
+  .ui .verdict { background: rgba(251,113,133,.16); color: var(--warn); }
+  .guards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .g { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+  .g b { display: block; font-size: 20px; margin-bottom: 4px; }
+  .g span { color: var(--muted); font-size: 17.5px; }
+
+  /* ---- manifest + edge ---- */
+  .manifest { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+  .m { padding: 10px 16px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--line); font-size: 19px; }
+  .m code { color: var(--be); font-family: Consolas, monospace; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 16px; overflow: hidden; }
+  th, td { text-align: left; padding: 7px 16px; font-size: 20px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 17.5px; background: var(--panel-2); }
+  tr:last-child td { border-bottom: 0; }
+  .open { margin-top: 22px; padding: 18px 22px; border-radius: 16px; border: 1px dashed var(--muted); color: var(--muted); font-size: 20px; }
+  .open b { color: var(--text); }
+
+  .hint { position: fixed; right: 16px; bottom: 12px; font-size: 15px; color: var(--muted); opacity: .7; }
+
+  @media (max-width: 900px) {
+    .pipe { grid-template-columns: 1fr; }
+    .arrow { transform: rotate(90deg); }
+    .two, .channels, .grid3, .guards { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- 1. title -->
+<section class="hero">
+  <h1>ระบบ <span class="accent-reward">Reward</span><br>สำหรับหลายเกม</h1>
+  <p class="lead">เกมหลายรูปแบบ (แข่งขัน และเล่นเรื่อย ๆ) แต่ใช้ระบบให้เหรียญชุดเดียว เพิ่มเกมใหม่จากหน้าแอดมินได้โดยไม่ต้องแก้ระบบ reward</p>
+  <div class="legend">
+    <span class="chip"><span class="dot" style="background:var(--fe)"></span>ผู้เล่น / Frontend</span>
+    <span class="chip"><span class="dot" style="background:var(--be)"></span>Platform Backend</span>
+    <span class="chip"><span class="dot" style="background:var(--game)"></span>Game Server (แยก host)</span>
+    <span class="chip"><span class="dot" style="background:var(--reward)"></span>Reward</span>
+  </div>
+</section>
+
+<!-- 2. big picture -->
+<section>
+  <div class="kicker">ภาพรวม</div>
+  <h2>เกมรายงาน · Platform ตัดสินเหรียญ</h2>
+  <p class="lead">แยกหน้าที่เป็นชั้นชัดเจน เกมไม่รู้จัก reward เลย แยกเป็น 2 ทางตามประเภทเกม</p>
+  <div class="rowlabel"><span class="chip"><span class="dot" style="background:var(--reward)"></span>เกมแข่งขัน (placement)</span></div>
+  <div class="pipe">
+    <div class="node game"><b>เกม</b><small>iframe + game server<br>ตัดสินผลที่ server</small></div>
+    <div class="arrow">→</div>
+    <div class="node game"><b>ผลเกมมาตรฐาน</b><small>อันดับ · score · duration<br>เซ็นลายเซ็น</small></div>
+    <div class="arrow">→</div>
+    <div class="node be"><b>Platform</b><small>ตรวจผล → บันทึก<br>ปล่อย event กลาง</small></div>
+    <div class="arrow">→</div>
+    <div class="stack">
+      <div class="node reward"><b>Base payout</b><small>ทุกรอบ · ตามอันดับ</small></div>
+      <div class="node reward"><b>Quest</b><small>โบนัสจาก event</small></div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node be"><b>Ledger</b><small>ประตูเดียวที่จ่ายเหรียญ<br>กันจ่ายซ้ำ</small></div>
+  </div>
+  <div class="rowlabel"><span class="chip"><span class="dot" style="background:var(--be)"></span>เกมเล่นเรื่อย ๆ (time_only)</span></div>
+  <div class="pipe">
+    <div class="node game"><b>เกม</b><small>ห้องถาวร (เซฟ)<br>ไม่มีรอบ</small></div>
+    <div class="arrow">→</div>
+    <div class="node game"><b>Checkpoint</b><small>เวลา active ต่อคน<br>เซ็น · ทุก ~5 นาที</small></div>
+    <div class="arrow">→</div>
+    <div class="node be"><b>Platform</b><small>บวกเวลา active<br>ต่อ tag · ต่อวัน</small></div>
+    <div class="arrow">→</div>
+    <div class="node reward"><b>เควสเวลา</b><small>ขั้น 30 นาที ถึง 5 ชม.<br>ผู้เล่นกดรับ</small></div>
+    <div class="arrow">→</div>
+    <div class="node be"><b>Ledger</b><small>ประตูเดียวที่จ่ายเหรียญ<br>กันจ่ายซ้ำ</small></div>
+  </div>
+  <div class="rule"><b>หลักการ:</b> เกมส่งแค่ "ผลเกม" หรือ "เวลา active" ส่วนจะได้กี่เหรียญ <b>platform เป็นคนตัดสินทั้งหมด</b> ตามค่าที่ตั้งไว้ในแอดมิน</div>
+</section>
+
+<!-- 3b. gameplay mock -->
+<section class="full">
+  <div class="kicker">Mock UI</div>
+  <h2>หน้า Gameplay: เกมซ้าย · แชท/ปาร์ตี้ขวา</h2>
+  <div class="mk">
+    <div class="mk-top">
+      <span class="mk-logo">NakaLite</span><span class="mk-party">ปาร์ตี้ของ Naka · เกมแข่งวิ่ง</span>
+      <span class="mk-sp"></span>
+      <span class="mk-coin">1,240 เหรียญ</span>
+      <span class="nm" style="position:static;width:26px;height:26px;font-size:14px;box-shadow:none">5</span>
+      <span class="mk-bell"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0112 0c0 7 3 8 3 8H3s3-1 3-8M10 20a2 2 0 004 0"/></svg><i></i></span>
+      <span class="mk-av"></span>
+    </div>
+    <div class="mk-toast"><b>เควสขยับ!</b> เล่น 3 เกมที่ต่างกัน 2/3</div>
+    <div class="mk-body">
+      <div class="mk-game">
+        <div class="lane" style="top:0"><div class="runner" style="left:62%;background:var(--fe)"><span>Naka#1024</span></div></div>
+        <div class="lane" style="top:25%"><div class="runner" style="left:70%;background:var(--be)"><span>Mint#0412</span></div></div>
+        <div class="lane" style="top:50%"><div class="runner" style="left:48%;background:var(--game)"><span>Pop#7781</span></div></div>
+        <div class="lane" style="top:75%;border-bottom:0"><div class="runner" style="left:35%;background:var(--reward)"><span>Ice#3390</span></div></div>
+        <div class="finish"></div>
+        <div class="hud">รอบที่ 2 · 03:42</div>
+        <div class="mk-tag">iframe · เกมของทีมเกม (host แยก)</div>
+        <span class="nm" style="left:14px;top:56px">1</span>
+      </div>
+      <div class="mk-side">
+        <div class="mk-tabs"><span class="on">แชท</span><span>ปาร์ตี้</span><span>เควส</span></div>
+        <div class="mk-plist">
+          <span class="nm" style="right:8px;top:8px">2</span>
+          <div class="mk-pl"><span class="d" style="background:var(--fe)"></span>Naka#1024 (host)<em>กำลังเล่น</em></div>
+          <div class="mk-pl"><span class="d" style="background:var(--be)"></span>Mint#0412<em>กำลังเล่น</em></div>
+          <div class="mk-pl"><span class="d" style="background:var(--game)"></span>Pop#7781<em>กำลังเล่น</em></div>
+          <div class="mk-pl"><span class="d" style="background:var(--reward)"></span>Ice#3390<em>กำลังเล่น</em></div>
+        </div>
+        <div class="mk-chat">
+          <span class="nm" style="right:8px;top:8px">3</span>
+          <div><b>Mint</b> ไปทางซ้ายนะ</div>
+          <div><b>Pop</b> เกือบถึงแล้ว!</div>
+          <div><b>Ice</b> ขอรอบหน้าแก้มือ</div>
+        </div>
+        <div class="mk-input">พิมพ์ข้อความ...</div>
+        <div class="mk-quest">
+          <span class="nm" style="right:8px;top:-14px">4</span>
+          <b>เควสสัปดาห์ · Variety</b>
+          <div class="mk-bar"><i style="width:66%"></i></div>
+          เล่น 3 เกมที่ต่างกัน 2/3 · +50 เหรียญ
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mk-legend">
+    <div><b><span class="nm">1</span>เกม</b>iframe ของทีมเกม</div>
+    <div><b><span class="nm">2</span>ปาร์ตี้</b>รายชื่อ + สถานะสด</div>
+    <div><b><span class="nm">3</span>แชท</b>คุยระหว่างเล่นได้</div>
+    <div><b><span class="nm">4</span>เควส</b>ขยับสด ไม่ต้องรอจบ</div>
+    <div><b><span class="nm">5</span>แจ้งเตือน</b>กระดิ่ง + toast</div>
+  </div>
+</section>
+
+<!-- 3. swimlane -->
+<section class="full">
+  <div class="kicker">โฟลว์ · เกมแข่งขัน (placement)</div>
+  <h2>จาก Lobby ถึงรับเหรียญ · 9 ขั้น ข้าม 3 ฝั่ง</h2>
+  <svg class="swim" viewBox="0 0 1000 892" role="img" aria-label="Swimlane flow เกมแข่งขัน จาก ready ถึงรับเหรียญ">
+    <defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#9aa7c0"/></marker></defs>
+    <rect x="10" y="6" width="320" height="880" rx="16" fill="#2dd4bf" fill-opacity=".05" stroke="#2dd4bf" stroke-opacity=".35"/>
+    <rect x="340" y="6" width="320" height="880" rx="16" fill="#fbbf24" fill-opacity=".05" stroke="#fbbf24" stroke-opacity=".35"/>
+    <rect x="670" y="6" width="320" height="880" rx="16" fill="#a78bfa" fill-opacity=".05" stroke="#a78bfa" stroke-opacity=".35"/>
+    <text x="170" y="38" text-anchor="middle" font-size="19" font-weight="700" fill="#2dd4bf">ผู้เล่น / Frontend</text>
+    <text x="500" y="38" text-anchor="middle" font-size="19" font-weight="700" fill="#fbbf24">Platform Backend</text>
+    <text x="830" y="38" text-anchor="middle" font-size="19" font-weight="700" fill="#a78bfa">Game Server</text>
+    <g fill="none" stroke="#9aa7c0" stroke-width="2" marker-end="url(#ah)">
+      <path d="M170 134 V146 H500 V158"/>
+      <path d="M500 226 V238 H170 V250"/>
+      <path d="M170 318 V330 H830 V342"/>
+      <path d="M830 410 V422 H500 V434"/>
+      <path d="M500 502 V514 H830 V526"/>
+      <path d="M830 594 V606 H500 V618"/>
+      <path d="M500 686 V710"/>
+      <path d="M500 778 V790 H170 V802"/>
+    </g>
+    <g font-size="14.5" fill="#cbd5e8" text-anchor="middle" stroke="#0e1320" stroke-width="4" paint-order="stroke">
+      <text x="335" y="141">ready ครบ</text>
+      <text x="335" y="233">launch URL + token</text>
+      <text x="500" y="325">โหลด iframe</text>
+      <text x="665" y="417">GET /sessions/:id</text>
+      <text x="665" y="509">รายชื่อ + ค่าตั้ง</text>
+      <text x="665" y="601">POST ผล (เซ็น)</text>
+      <text x="335" y="785">socket event</text>
+    </g>
+    <g font-weight="700">
+      <rect x="30" y="66" width="280" height="68" rx="12" fill="#172033" stroke="#2dd4bf" stroke-width="2"/>
+      <circle cx="30" cy="66" r="14" fill="#2dd4bf"/><text x="30" y="71" text-anchor="middle" fill="#0e1320" font-size="14">1</text>
+      <text x="170" y="94" text-anchor="middle" fill="#e9edf6" font-size="16.5">ทุกคนกด Ready</text>
+      <text x="170" y="116" text-anchor="middle" fill="#9aa7c0" font-size="14.5" font-weight="400">สมาชิกปาร์ตี้พร้อมครบใน lobby</text>
+      <rect x="360" y="158" width="280" height="68" rx="12" fill="#172033" stroke="#fbbf24" stroke-width="2"/>
+      <circle cx="360" cy="158" r="14" fill="#fbbf24"/><text x="360" y="163" text-anchor="middle" fill="#0e1320" font-size="14">2</text>
+      <text x="500" y="186" text-anchor="middle" fill="#e9edf6" font-size="16.5">สร้าง GameSession</text>
+      <text x="500" y="208" text-anchor="middle" fill="#9aa7c0" font-size="14.5" font-weight="400">ออก launch token (JWT อายุสั้น)</text>
+      <rect x="30" y="250" width="280" height="68" rx="12" fill="#172033" stroke="#2dd4bf" stroke-width="2"/>
+      <circle cx="30" cy="250" r="14" fill="#2dd4bf"/><text x="30" y="255" text-anchor="middle" fill="#0e1320" font-size="14">3</text>
+      <text x="170" y="278" text-anchor="middle" fill="#e9edf6" font-size="16.5">เปิดหน้าเกม (iframe)</text>
+      <text x="170" y="300" text-anchor="middle" fill="#9aa7c0" font-size="14.5" font-weight="400">ซ้าย = เกม · ขวา = แชท + ปาร์ตี้</text>
+      <rect x="690" y="342" width="280" height="68" rx="12" fill="#172033" stroke="#a78bfa" stroke-width="2"/>
+      <circle cx="690" cy="342" r="14" fill="#a78bfa"/><text x="690" y="347" text-anchor="middle" fill="#0e1320" font-size="14">4</text>
+      <text x="830" y="370" text-anchor="middle" fill="#e9edf6" font-size="16.5">ตรวจ token แล้วขอ session</text>
+      <text x="830" y="392" text-anchor="middle" fill="#9aa7c0" font-size="14.5" font-weight="400">GET /sessions/:id · ไม่ต้อง login</text>
+      <rect x="360" y="434" width="280" height="68" rx="12" fill="#172033" stroke="#fbbf24" stroke-width="2"/>
+      <circle cx="360" cy="434" r="14" fill="#fbbf24"/><text x="360" y="439" text-anchor="middle" fill="#0e1320" font-size="14">5</text>
+      <text x="500" y="462" text-anchor="middle" fill="#e9edf6" font-size="16.5">ตอบข้อมูล session</text>
+      <text x="500" y="484" text-anchor="middle" fill="#9aa7c0" font-size="14.5" font-weight="400">รายชื่อผู้เล่น + ค่าตั้งของเกม</text>
+      <rect x="690" y="526" width="280" height="68" rx="12" fill="#172033" stroke="#a78bfa" stroke-width="2"/>
+      <circle cx="690" cy="526" r="14" fill="#a78bfa"/><text x="690" y="531" text-anchor="middle" fill="#0e1320" font-size="14">6</text>
+      <text x="830" y="554" text-anchor="middle" fill="#e9edf6" font-size="16.5">เล่นจนจบ → ส่งผลเกม</text>
+      <text x="830" y="576" text-anchor="middle" fill="#9aa7c0" font-size="14.5" font-weight="400">อันดับ + score + duration · เซ็น</text>
+      <rect x="360" y="618" width="280" height="68" rx="12" fill="#172033" stroke="#fbbf24" stroke-width="2"/>
+      <circle cx="360" cy="618" r="14" fill="#fbbf24"/><text x="360" y="623" text-anchor="middle" fill="#0e1320" font-size="14">7</text>
+      <text x="500" y="646" text-anchor="middle" fill="#e9edf6" font-size="16.5">ตรวจผล แล้วบันทึก</text>
+      <text x="500" y="668" text-anchor="middle" fill="#9aa7c0" font-size="14.5" font-weight="400">ลายเซ็น · เวลาขั้นต่ำ · ผลซ้ำ</text>
+      <rect x="360" y="710" width="280" height="68" rx="12" fill="#172033" stroke="#4ade80" stroke-width="2"/>
+      <circle cx="360" cy="710" r="14" fill="#4ade80"/><text x="360" y="715" text-anchor="middle" fill="#0e1320" font-size="14">8</text>
+      <text x="500" y="738" text-anchor="middle" fill="#e9edf6" font-size="16.5">ปล่อย event กลาง</text>
+      <text x="500" y="760" text-anchor="middle" fill="#9aa7c0" font-size="14.5" font-weight="400">Base payout + Quest → Ledger</text>
+      <rect x="30" y="802" width="280" height="68" rx="12" fill="#172033" stroke="#4ade80" stroke-width="2"/>
+      <circle cx="30" cy="802" r="14" fill="#4ade80"/><text x="30" y="807" text-anchor="middle" fill="#0e1320" font-size="14">9</text>
+      <text x="170" y="830" text-anchor="middle" fill="#e9edf6" font-size="16.5">การ์ดสรุปผล → กลับ lobby</text>
+      <text x="170" y="852" text-anchor="middle" fill="#9aa7c0" font-size="14.5" font-weight="400">อันดับ · +เหรียญ · quest ที่ขยับ</text>
+    </g>
+  </svg>
+</section>
+
+<!-- 4. payout -->
+<section>
+  <div class="kicker">Reward 2 ชั้น</div>
+  <h2>ได้เหรียญทั้งจากการเล่น และจากเควส</h2>
+  <p class="lead">เกมแข่งขัน (placement): ปาร์ตี้ได้เหรียญตามอันดับ ทุกอันดับได้มากกว่า 0 · เกมเล่นเรื่อย ๆ ดูหน้า time_only</p>
+  <div class="two">
+    <div class="card">
+      <h3 class="accent-reward">① Base payout</h3>
+      <p>เกม placement: จ่ายทุกครั้งที่เล่นจบ ไม่ต้องมีเควส</p>
+      <div class="formula">pool = ค่าฐานของเกม × จำนวนผู้เล่น</div>
+      <div class="bars">
+        <div class="bar-row"><span>อันดับ 1</span><div class="bar" style="width:100%"></div><span>×1.8</span></div>
+        <div class="bar-row"><span>อันดับ 2</span><div class="bar" style="width:67%"></div><span>×1.2</span></div>
+        <div class="bar-row"><span>อันดับ 3</span><div class="bar" style="width:33%"></div><span>×0.6</span></div>
+        <div class="bar-row"><span>อันดับ 4</span><div class="bar" style="width:22%"></div><span>×0.4</span></div>
+      </div>
+      <div class="bar-label">ตัวอย่างตารางตัวคูณของเกม 4 คน (รวม = 4.0 = pool) ค่าจริงตั้งในแอดมิน</div>
+      <ul>
+        <li>เสมอ = แบ่งเฉลี่ยของอันดับที่คาบเกี่ยว</li>
+        <li>มี daily cap ต่อผู้เล่น</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 class="accent-be">② Quest (โบนัส)</h3>
+      <p>ฟัง event กลางแล้วนับ progress เอง จ่ายแยกจาก base payout</p>
+      <ul>
+        <li>เควสผูกกับ <b>tag / ชนิด</b> ของเกม ไม่ผูกชื่อเกมเป็นค่าเริ่มต้น</li>
+        <li>เกมใหม่ส่ง event ครบ → เควสเดิมทำงานได้ทันที</li>
+        <li>ใช้ idempotency key แยก<br>
+          <span style="font-family:Consolas,monospace;color:var(--text);font-size: 17.5px">session:&lt;id&gt;:&lt;user&gt;</span> สำหรับ base<br>
+          <span style="font-family:Consolas,monospace;color:var(--text);font-size: 17.5px">quest:&lt;id&gt;:&lt;week&gt;</span> สำหรับเควส
+        </li>
+        <li>event มี <code>partySize</code> ติดมาเสมอ (ทุกเกมเป็น multiplayer)</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 5. quest types -->
+<section>
+  <div class="kicker">ชนิดเควส</div>
+  <h2>เริ่มจาก 5 แบบ ที่เหลือค่อยตามมา</h2>
+  <p class="lead">เควส "เล่นเกมอะไรก็ได้ 1 รอบ" ยังอยู่ เป็นแบบ Count</p>
+  <div class="grid3" style="grid-template-columns:repeat(4,1fr)">
+    <div class="q first"><span class="tag">เริ่มก่อน</span><b>Count</b><span>เล่นให้ครบ 3 รอบ</span></div>
+    <div class="q first"><span class="tag">เริ่มก่อน</span><b>Variety</b><span>เล่น 3 เกมที่ต่างกัน ดันให้ลองเกมใหม่</span></div>
+    <div class="q first"><span class="tag">เริ่มก่อน</span><b>Social</b><span>เล่นกับเพื่อน/ปาร์ตี้ 2 รอบ</span></div>
+    <div class="q first"><span class="tag">เริ่มก่อน</span><b>Featured</b><span>เล่น "เกมแนะนำวันนี้" แอดมินเลือกเอง ใช้โปรโมทเกมใหม่</span></div>
+    <div class="q first"><span class="tag">เริ่มก่อน</span><b>Time</b><span>เล่นสะสม 30 นาที ถึง 5 ชม./วัน หลายขั้น กดรับเอง (เกม time_only)</span></div>
+    <div class="q"><span class="tag later">ภายหลัง</span><b>Streak</b><span>เล่นติดกัน 3 วัน</span></div>
+    <div class="q"><span class="tag later">ภายหลัง</span><b>Milestone</b><span>ครั้งแรกที่เล่นเกม X (one-time)</span></div>
+  </div>
+</section>
+
+<!-- 3a. swimlane time_only -->
+<section class="full">
+  <div class="kicker">โฟลว์ · เกมเล่นเรื่อย ๆ (time_only)</div>
+  <h2>จากเข้าห้อง ถึงกดรับขั้นเวลา · ไม่มีจุดจบ ใช้ checkpoint</h2>
+  <svg class="swim" viewBox="0 0 1000 892" role="img" aria-label="Swimlane flow เกมเล่นเรื่อย ๆ time_only จนถึงรับเหรียญ">
+    <defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#9aa7c0"/></marker></defs>
+    <rect x="10" y="6" width="320" height="880" rx="16" fill="#2dd4bf" fill-opacity=".05" stroke="#2dd4bf" stroke-opacity=".35"/>
+    <rect x="340" y="6" width="320" height="880" rx="16" fill="#fbbf24" fill-opacity=".05" stroke="#fbbf24" stroke-opacity=".35"/>
+    <rect x="670" y="6" width="320" height="880" rx="16" fill="#a78bfa" fill-opacity=".05" stroke="#a78bfa" stroke-opacity=".35"/>
+    <text x="170" y="38" text-anchor="middle" font-size="19" font-weight="700" fill="#2dd4bf">ผู้เล่น / Frontend</text>
+    <text x="500" y="38" text-anchor="middle" font-size="19" font-weight="700" fill="#fbbf24">Platform Backend</text>
+    <text x="830" y="38" text-anchor="middle" font-size="19" font-weight="700" fill="#a78bfa">Game Server</text>
+    <g fill="none" stroke="#9aa7c0" stroke-width="2" marker-end="url(#ah)">
+      <path d="M170 134 V146 H500 V158"/>
+      <path d="M500 226 V238 H830 V250"/>
+      <path d="M830 318 V342"/>
+      <path d="M830 410 V434"/>
+      <path d="M830 502 V514 H500 V526"/>
+      <path d="M500 594 V618"/>
+      <path d="M500 686 V698 H170 V710"/>
+      <path d="M170 778 V790 H500 V802"/>
+    </g>
+    <g font-size="14.5" fill="#cbd5e8" text-anchor="middle" stroke="#0e1320" stroke-width="4" paint-order="stroke">
+      <text x="335" y="141">เข้าห้อง</text>
+      <text x="665" y="233">launch URL + token</text>
+      <text x="665" y="509">POST checkpoint (เซ็น)</text>
+      <text x="335" y="693">socket event</text>
+      <text x="335" y="785">กดรับ</text>
+    </g>
+    <g font-weight="700">
+      <rect x="30" y="66" width="280" height="68" rx="12" fill="#172033" stroke="#2dd4bf" stroke-width="2"/>
+      <circle cx="30" cy="66" r="14" fill="#2dd4bf"/><text x="30" y="71" text-anchor="middle" fill="#0e1320" font-size="14">1</text>
+      <text x="170" y="94" text-anchor="middle" fill="#e9edf6" font-size="16.5">ทุกคนเข้าห้องที่เซฟไว้</text>
+      <text x="170" y="116" text-anchor="middle" fill="#9aa7c0" font-size="14.5" font-weight="400">จาก lobby เปิดหน้าเกม (iframe)</text>
+      <rect x="360" y="158" width="280" height="68" rx="12" fill="#172033" stroke="#fbbf24" stroke-width="2"/>
+      <circle cx="360" cy="158" r="14" fill="#fbbf24"/><text x="360" y="163" text-anchor="middle" fill="#0e1320" font-size="14">2</text>
+      <text x="500" y="186" text-anchor="middle" fill="#e9edf6" font-size="16.5">สร้าง GameSession</text>
+      <text x="500" y="208" text-anchor="middle" fill="#9aa7c0" font-size="14.5" font-weight="400">launch token มี roomId</text>
+      <rect x="690" y="250" width="280" height="68" rx="12" fill="#172033" stroke="#a78bfa" stroke-width="2"/>
+      <circle cx="690" cy="250" r="14" fill="#a78bfa"/><text x="690" y="255" text-anchor="middle" fill="#0e1320" font-size="14">3</text>
+      <text x="830" y="278" text-anchor="middle" fill="#e9edf6" font-size="16.5">ตรวจ token แล้วขอ session</text>
+      <text x="830" y="300" text-anchor="middle" fill="#9aa7c0" font-size="14.5" font-weight="400">ได้ idle · checkpoint · co-players</text>
+      <rect x="690" y="342" width="280" height="68" rx="12" fill="#172033" stroke="#a78bfa" stroke-width="2"/>
+      <circle cx="690" cy="342" r="14" fill="#a78bfa"/><text x="690" y="347" text-anchor="middle" fill="#0e1320" font-size="14">4</text>
+      <text x="830" y="370" text-anchor="middle" fill="#e9edf6" font-size="16.5">วัดเวลา active ต่อคน</text>
+      <text x="830" y="392" text-anchor="middle" fill="#9aa7c0" font-size="14.5" font-weight="400">ต้องมี action จริง + คู่เล่น ≥ 2</text>
+      <rect x="690" y="434" width="280" height="68" rx="12" fill="#172033" stroke="#a78bfa" stroke-width="2"/>
+      <circle cx="690" cy="434" r="14" fill="#a78bfa"/><text x="690" y="439" text-anchor="middle" fill="#0e1320" font-size="14">5</text>
+      <text x="830" y="462" text-anchor="middle" fill="#e9edf6" font-size="16.5">ส่ง checkpoint ทุก ~5 นาที</text>
+      <text x="830" y="484" text-anchor="middle" fill="#9aa7c0" font-size="14.5" font-weight="400">activeMsDelta · เซ็น · วนซ้ำ</text>
+      <rect x="360" y="526" width="280" height="68" rx="12" fill="#172033" stroke="#fbbf24" stroke-width="2"/>
+      <circle cx="360" cy="526" r="14" fill="#fbbf24"/><text x="360" y="531" text-anchor="middle" fill="#0e1320" font-size="14">6</text>
+      <text x="500" y="554" text-anchor="middle" fill="#e9edf6" font-size="16.5">ตรวจ + บวกเวลา active</text>
+      <text x="500" y="576" text-anchor="middle" fill="#9aa7c0" font-size="14.5" font-weight="400">ต่อ tag · เพดานต่อวัน · ไม่ซ้ำ</text>
+      <rect x="360" y="618" width="280" height="68" rx="12" fill="#172033" stroke="#4ade80" stroke-width="2"/>
+      <circle cx="360" cy="618" r="14" fill="#4ade80"/><text x="360" y="623" text-anchor="middle" fill="#0e1320" font-size="14">7</text>
+      <text x="500" y="646" text-anchor="middle" fill="#e9edf6" font-size="16.5">ปลดล็อกขั้นเวลา</text>
+      <text x="500" y="668" text-anchor="middle" fill="#9aa7c0" font-size="14.5" font-weight="400">notification: ขั้นพร้อมรับ</text>
+      <rect x="30" y="710" width="280" height="68" rx="12" fill="#172033" stroke="#4ade80" stroke-width="2"/>
+      <circle cx="30" cy="710" r="14" fill="#4ade80"/><text x="30" y="715" text-anchor="middle" fill="#0e1320" font-size="14">8</text>
+      <text x="170" y="738" text-anchor="middle" fill="#e9edf6" font-size="16.5">ผู้เล่นกดรับขั้น</text>
+      <text x="170" y="760" text-anchor="middle" fill="#9aa7c0" font-size="14.5" font-weight="400">รับได้ถึงสิ้นวันถัดไป</text>
+      <rect x="360" y="802" width="280" height="68" rx="12" fill="#172033" stroke="#4ade80" stroke-width="2"/>
+      <circle cx="360" cy="802" r="14" fill="#4ade80"/><text x="360" y="807" text-anchor="middle" fill="#0e1320" font-size="14">9</text>
+      <text x="500" y="830" text-anchor="middle" fill="#e9edf6" font-size="16.5">จ่ายเหรียญเข้า Ledger</text>
+      <text x="500" y="852" text-anchor="middle" fill="#9aa7c0" font-size="14.5" font-weight="400">key ต่อขั้น กันกดซ้ำ</text>
+    </g>
+  </svg>
+</section>
+
+<!-- 5b. time_only -->
+<section>
+  <div class="kicker">เกมไม่มีแพ้ชนะ (time_only)</div>
+  <h2>เล่นสะสมเวลา · กดรับทีละขั้น</h2>
+  <p class="lead">เกมฟาร์ม/สร้างห้องที่เซฟไว้ ไม่มี "รอบ" จึงจ่ายผ่านเควสรายวันแทน ไม่มี base payout</p>
+  <div class="strip">
+    <span class="chip">ห้องถาวร (เซฟ)</span><span class="sep">→</span>
+    <span class="chip">game server ส่ง checkpoint ทุก ~5 นาที (เซ็น)</span><span class="sep">→</span>
+    <span class="chip">platform บวกเวลา active ต่อ tag</span><span class="sep">→</span>
+    <span class="chip">ปลดล็อกขั้น → ผู้เล่นกดรับ → Ledger</span>
+  </div>
+
+  <div class="track-wrap" aria-label="ตัวอย่าง: วันนี้เล่นแล้ว 2 ชม. 40 นาที">
+    <div class="track"><div class="fill"></div></div>
+    <div class="ms claimed" style="left:8%"><div class="t">30 นาที</div><div class="c">✓</div><div class="r">+10</div><div class="s">รับแล้ว</div></div>
+    <div class="ms ready"   style="left:24.8%"><div class="t">1 ชม.</div><div class="c">รับ</div><div class="r">+15</div><div class="s">กดรับได้</div></div>
+    <div class="ms ready"   style="left:41.6%"><div class="t">2 ชม.</div><div class="c">รับ</div><div class="r">+25</div><div class="s">กดรับได้</div></div>
+    <div class="ms locked"  style="left:58.4%"><div class="t">3 ชม.</div><div class="c">ล็อก</div><div class="r">+30</div><div class="s">ยังไม่ถึง</div></div>
+    <div class="ms locked"  style="left:75.2%"><div class="t">4 ชม.</div><div class="c">ล็อก</div><div class="r">+35</div><div class="s">ยังไม่ถึง</div></div>
+    <div class="ms locked"  style="left:92%"><div class="t">5 ชม.</div><div class="c">ล็อก</div><div class="r">+40</div><div class="s">ยังไม่ถึง</div></div>
+    <div class="stem"></div>
+    <div class="pin">วันนี้เล่นแล้ว 2 ชม. 40 น.</div>
+  </div>
+  <div class="note">ตัวอย่างค่ารางวัล รวมสูงสุด 155/วัน ค่าจริงตั้งในแอดมิน</div>
+
+  <div class="grid3" style="margin-top:14px">
+    <div class="q first"><b>ตัวนับไม่รีเซ็ต</b><span>กดรับขั้น 1 ชม. แล้วเล่นต่อ เวลานับต่อถึง 2 ชม. ได้ ขั้นที่ยังไม่กดรออยู่ รับข้ามขั้นได้</span></div>
+    <div class="q first"><b>รับได้ถึงสิ้นวันถัดไป</b><span>ส่ง notification เมื่อปลดล็อก เกินกำหนดแล้วหมดอายุ ไม่ต้องกลัวพลาดตอนเล่นดึก</span></div>
+    <div class="q first"><b>นับตาม tag ของเกม</b><span>ฟาร์ม 1 ชม. + สร้างเมือง 1 ชม. = 2 ชม. ถ้าสองเกมมี tag เดียวกัน</span></div>
+  </div>
+</section>
+
+<!-- 5c. AFK -->
+<section>
+  <div class="kicker">กัน AFK</div>
+  <h2>ซ้อนหลายชั้น ไม่พึ่งชั้นเดียว</h2>
+  <p class="lead">เกมไม่มีแพ้ชนะ คนจึงเปิดทิ้งไว้เก็บเหรียญได้ เวลาจะถูกนับเมื่อครบทั้ง 3 เงื่อนไข</p>
+  <div class="formula-strip">
+    <div class="cond"><b>มีการกระทำที่มีความหมาย</b><span>ปลูก เก็บ สร้าง ไม่ใช่แค่ต่อเน็ตอยู่</span></div>
+    <span class="op">+</span>
+    <div class="cond"><b>ไม่เกิน idleTimeoutSec</b><span>เงียบเกินกำหนด = หยุดนับจนกว่าจะกลับมาทำ</span></div>
+    <span class="op">+</span>
+    <div class="cond"><b>มีผู้เล่น active ≥ 2 บัญชี</b><span>เปิดห้องทิ้งคนเดียวไม่นับ</span></div>
+    <span class="op">=</span>
+    <div class="result">นับเวลา</div>
+  </div>
+  <div class="grid3">
+    <div class="layer"><span class="own game">เกม</span><span class="n">1</span><b>เกมวัด active เอง</b><p>game server เห็น input จริง เป็นคนบอกว่าช่วงไหน active เกมที่นิยามไม่ได้ ขึ้น live ไม่ได้</p></div>
+    <div class="layer"><span class="own game">เกม</span><span class="n">2</span><b>Idle timeout</b><p>ค่า idleTimeoutSec ตั้งต่อเกมใน manifest</p></div>
+    <div class="layer"><span class="own be">platform</span><span class="n">3</span><b>ต้องมีคู่เล่นพร้อมกัน</b><p>ตั้งจำนวนขั้นต่ำด้วย minCoPlayers</p></div>
+    <div class="layer"><span class="own game">เกม</span><span class="n">4</span><b>ตรวจรูปแบบ bot</b><p>กระทำซ้ำเดิมจังหวะเท่ากันตลอด เกมตีธงและไม่นับ เพราะเกมรู้ว่าอะไรผิดปกติ</p></div>
+    <div class="layer"><span class="own be">platform</span><span class="n">5</span><b>Platform ตรวจซ้ำ</b><p>delta ไม่เกินเวลาจริง + ค่าเผื่อ · เพดานเวลานับต่อวันต่อ tag · log ให้แอดมิน · refund ได้</p></div>
+    <div class="layer weak"><span class="own fe">FE</span><span class="n">+</span><b>สัญญาณอ่อน: สถานะแท็บ</b><p>ส่งมากับ checkpoint ใช้ประกอบเท่านั้น (client ปลอมได้) ห้ามใช้ตัดสินแทนชั้น 1</p></div>
+  </div>
+</section>
+
+<!-- 3c. result + time panel mock -->
+<section>
+  <div class="kicker">Mock UI</div>
+  <h2>หลังเกมจบ และระหว่างเล่นเกมเก็บเวลา</h2>
+  <p class="lead">การ์ดผลของเกมแข่งขัน เทียบกับแผงเวลาของเกม time_only</p>
+  <div class="two">
+    <div class="mk2">
+      <h3>จบรอบ · คุณได้อันดับ 2</h3>
+      <div class="sub">เกมแข่งวิ่ง (placement) · pool = 40 × 4 = 160 เหรียญ</div>
+      <div class="rank"><span class="p">#1</span><span class="d" style="background:var(--be)"></span><span>Mint#0412</span><span class="c">+72</span></div>
+      <div class="rank me"><span class="p" style="color:var(--reward)">#2</span><span class="d" style="background:var(--fe)"></span><span>Naka#1024 (คุณ)</span><span class="c">+48</span></div>
+      <div class="rank"><span class="p">#3</span><span class="d" style="background:var(--game)"></span><span>Pop#7781</span><span class="c">+24</span></div>
+      <div class="rank"><span class="p">#4</span><span class="d" style="background:var(--reward)"></span><span>Ice#3390</span><span class="c">+16</span></div>
+      <div class="chips">
+        <span class="chip"><span class="dot" style="background:var(--reward)"></span>Variety 2/3</span>
+        <span class="chip"><span class="dot" style="background:var(--be)"></span>Daily cap เหลือ 312</span>
+      </div>
+      <div class="btns"><span class="btn">กลับ lobby</span><span class="btn pri">เล่นอีกรอบ</span></div>
+    </div>
+    <div class="mk2">
+      <h3>เกมฟาร์ม · วันนี้ 2 ชม. 40 น.</h3>
+      <div class="sub">time_only · tag sandbox · เพื่อนใน active 3 คน</div>
+      <div class="mk-bar" style="height:12px;margin-top:0"><i style="width:53%"></i></div>
+      <div class="tier done" style="margin-top:12px"><span>30 นาที · +10</span><span style="color:var(--reward)">รับแล้ว</span></div>
+      <div class="tier"><span>1 ชม. · +15</span><span class="btn pri sm">รับ</span></div>
+      <div class="tier"><span>2 ชม. · +25</span><span class="btn pri sm">รับ</span></div>
+      <div class="tier locked"><span>3 ชม. · +30</span><span>อีก 20 นาที</span></div>
+      <div class="afk">ไม่มีการกระทำมา 4 นาที · เวลาจะหยุดนับ ทำอะไรสักอย่างเพื่อนับต่อ</div>
+      <div class="sub" style="margin:10px 0 0">ขั้นที่ปลดล็อกแล้วรับได้ถึงสิ้นวันพรุ่งนี้</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="kicker">Platform → เกม</div>
+  <h2>เกมรับข้อมูลจาก platform อย่างไร</h2>
+  <p class="lead">เริ่มจาก 2 ช่องทางแรกก็ครบ ส่วนที่เหลือเป็นตัวเลือกให้ทีมตัดสินใจ</p>
+  <div class="api-grid">
+    <div class="api rec">
+      <span class="badge">แนะนำ · เริ่มก่อน</span>
+      <h3>1. Launch token (JWT)</h3>
+      <div class="route"><span class="a">platform</span>→<span class="a">เกม</span><span style="color:var(--muted)">ผ่าน URL ของ iframe</span></div>
+      <p><b>ใส่:</b> sessionId, userId, ชื่อ/avatar, ทีม, roomId, หมดอายุ 2–5 นาที, jti ใช้ครั้งเดียว</p>
+      <p>game server ตรวจลายเซ็นเองได้ ไม่ต้องเรียก platform ทุกครั้ง</p>
+      <div class="trust ok">เชื่อได้ (มีลายเซ็น)</div>
+    </div>
+    <div class="api rec">
+      <span class="badge">แนะนำ · เริ่มก่อน</span>
+      <h3>2. เรียก API กลับ</h3>
+      <div class="route"><span class="a">game server</span>→<span class="a">platform</span><span style="color:var(--muted)">GET /sessions/:id</span></div>
+      <p><b>ได้:</b> รายชื่อผู้เล่นปัจจุบัน, ค่าตั้งเกม (rewardMode, idleTimeoutSec ...), โปรไฟล์ที่ต้องแสดง</p>
+      <p>ใช้ API key ต่อเกม จำกัดเฉพาะ session ของเกมนั้น</p>
+      <div class="trust ok">เชื่อได้ (server-to-server)</div>
+    </div>
+    <div class="api opt">
+      <span class="badge">ตัวเลือก</span>
+      <h3>3. Webhook</h3>
+      <div class="route"><span class="a">platform</span>→<span class="a">game server</span><span style="color:var(--muted)">webhookUrl ใน manifest</span></div>
+      <p><b>แจ้ง:</b> session ยกเลิก, ผู้เล่นถูกเตะ/ออกปาร์ตี้, บัญชีโดนแบน</p>
+      <p>ต้องทำ retry + ลายเซ็น ถ้าไม่ทำ เกมเรียก API ซ้ำเช็คสถานะแทนได้</p>
+      <div class="trust ok">เชื่อได้ (เซ็นลายเซ็น)</div>
+    </div>
+    <div class="api opt">
+      <span class="badge">ตัวเลือก</span>
+      <h3>4. postMessage / bridge</h3>
+      <div class="route"><span class="a">หน้าเว็บ</span>→<span class="a">iframe</span><span style="color:var(--muted)">webview ใช้ native bridge</span></div>
+      <p><b>ส่ง:</b> ภาษา, ธีม, ระดับเสียง, pause เมื่อแท็บถูกซ่อน</p>
+      <p>ทำตอนทำหน้าเกมฝั่ง FE</p>
+      <div class="trust ui">UI เท่านั้น · ห้ามใช้เรื่องเหรียญ/สิทธิ์</div>
+    </div>
+  </div>
+</section>
+
+<!-- 5e. decisions -->
+<section>
+  <div class="kicker">ให้ทีมตัดสินใจ</div>
+  <h2>จุดเลือกของการส่งข้อมูลให้เกม</h2>
+  <p class="lead">คอลัมน์สีเขียวคือสิ่งที่แนะนำ ทางเลือกอื่นยังใช้ได้ถ้าทีมเห็นต่าง</p>
+  <table>
+    <thead><tr><th>เรื่อง</th><th>แนะนำ</th><th>ทางเลือก</th><th>ต่างกันอย่างไร</th></tr></thead>
+    <tbody>
+      <tr><td>เซ็น launch token</td><td class="rec">asymmetric (ES256 + JWKS)</td><td class="alt">shared secret ต่อเกม</td><td>เกมโดนเจาะแล้วไม่กระทบเกมอื่น · shared ทำง่ายกว่า</td></tr>
+      <tr><td>ที่วาง token</td><td class="rec">URL fragment (#)</td><td class="alt">query (?)</td><td>fragment ไม่ไปอยู่ใน server log</td></tr>
+      <tr><td>ข้อมูล session</td><td class="rec">token เบา + เรียก API เพิ่ม</td><td class="alt">ยัดทุกอย่างใน token</td><td>ยัดใน token = ไม่ต้องเรียก API แต่รายชื่อที่เปลี่ยนทีหลังไม่อัพเดท</td></tr>
+      <tr><td>แจ้งเหตุระหว่างเล่น</td><td class="rec">เรียก API ซ้ำก่อน แล้วค่อยเพิ่ม webhook</td><td class="alt">webhook ตั้งแต่ต้น</td><td>webhook เร็วกว่า แต่ต้องทำ retry และลายเซ็น</td></tr>
+      <tr><td>ที่เก็บเซฟห้อง</td><td class="rec">game server เก็บเอง (key = userId + roomId)</td><td class="alt">platform เก็บแทน</td><td>platform เก็บ = ต้องรู้รูปแบบข้อมูลของทุกเกม</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 6. security -->
+<section>
+  <div class="kicker">ความปลอดภัย</div>
+  <h2>สองช่องทาง ห้ามปนกัน</h2>
+  <p class="lead">ผลเกมต้องมาจาก server เท่านั้น</p>
+  <div class="channels">
+    <div class="ch ok">
+      <h3>Game server → Platform BE</h3>
+      <p>ผลเกม / checkpoint เซ็นลายเซ็น · timestamp + sessionId · ส่งซ้ำได้อย่างปลอดภัย</p>
+      <span class="verdict">มีผลกับเหรียญ</span>
+    </div>
+    <div class="ch ui">
+      <h3>iframe ↔ หน้าเว็บ (postMessage / webview)</h3>
+      <p>บอกแค่ ready · ขอปิด · เกมจบแล้ว ผ่าน interface กลางฝั่ง FE</p>
+      <span class="verdict">UI เท่านั้น · ห้ามเชื่อผลแพ้ชนะ</span>
+    </div>
+  </div>
+  <div class="guards">
+    <div class="g"><b>Launch token สั้น</b><span>ผูก session + user ใช้เปิดเกมนอก lobby ไม่ได้</span></div>
+    <div class="g"><b>ลายเซ็นต่อเกม</b><span>secret ของเกมใช้เซ็นผลเกม/checkpoint หมุนเวียนได้จากแอดมิน</span></div>
+    <div class="g"><b>Idempotent</b><span>sessionId ซ้ำ = ผลที่สองถูกปฏิเสธ</span></div>
+    <div class="g"><b>minDurationMs</b><span>เกม placement: รอบที่จบไวผิดปกติไม่จ่าย</span></div>
+    <div class="g"><b>Daily cap</b><span>เพดานเหรียญต่อวันต่อผู้เล่น</span></div>
+    <div class="g"><b>กัน win-trading</b><span>ลดรางวัลเมื่อเล่นกับคนเดิมซ้ำ</span></div>
+    <div class="g"><b>จำกัด origin</b><span>iframe src จาก manifest · เกมตั้ง frame-ancestors</span></div>
+    <div class="g"><b>Log ผลที่ถูกปฏิเสธ</b><span>แอดมินเห็นว่าเกมไหนส่งผิด</span></div>
+  </div>
+</section>
+
+<!-- 6b. admin add-game mock -->
+<section class="full">
+  <div class="kicker">Mock UI · Admin</div>
+  <h2>ตัวอย่างการเพิ่มเกมบนหน้าแอดมิน</h2>
+  <div class="mk">
+    <div class="mk-top"><span class="mk-logo">NakaLite Admin</span><span class="mk-party">Games › New game</span><span class="mk-sp"></span><span class="pill nw" style="font-size:15px">draft</span></div>
+    <div class="adm-cols">
+      <div class="adm-col">
+        <div class="adm-h">ข้อมูลเกม <span class="pill old">มีในฟอร์มแล้ว</span></div>
+        <div class="r2">
+          <div class="f"><label>Title</label><div class="in">Sky Farm</div></div>
+          <div class="f"><label>Slug</label><div class="in">sky-farm</div></div>
+        </div>
+        <div class="r2">
+          <div class="f"><label>Category</label><div class="in">Sandbox ▾</div></div>
+          <div class="f"><label>Developer</label><div class="in">Studio X</div></div>
+        </div>
+        <div class="r2">
+          <div class="f"><label>Minimum players</label><div class="in">2</div></div>
+          <div class="f"><label>Maximum players</label><div class="in">6</div></div>
+        </div>
+        <div class="f"><label>Cover · Logo · Screenshots</label><div><span class="ptag">cover.png</span><span class="ptag">logo.png</span><span class="ptag">3 screenshots</span></div></div>
+        <div class="f"><label>Flags</label><div><span class="chk">☑ New</span><span class="chk off">☐ Featured</span><span class="chk off">☐ Trending</span><span class="chk off">☐ Hot</span></div></div>
+      </div>
+      <div class="adm-col new">
+        <div class="adm-h">Integration &amp; Reward <span class="pill nw">เพิ่มใหม่</span></div>
+        <div class="f"><label>Launch URL (iframe) <span class="pill api">API มีแล้ว · ยังไม่มีช่องในฟอร์ม</span></label><div class="in">https://skyfarm.games.example/play</div></div>
+        <div class="r2">
+          <div class="f"><label>Signing secret</label><div class="in">sk_live_••••••••••••  <span class="ptag" style="margin-left:6px">หมุนเวียน</span></div></div>
+          <div class="f"><label>Webhook URL (ตัวเลือก)</label><div class="in ph">https://...</div></div>
+        </div>
+        <div class="f"><label>Tags (เควสผูกกับ tag)</label><div><span class="ptag">sandbox</span><span class="ptag">coop</span><span class="ptag" style="color:var(--muted)">+ เพิ่ม</span></div></div>
+        <div class="f"><label>โหมด reward</label><div class="seg"><span>placement</span><span class="on">time_only</span></div><div class="hint">เกมไม่มีแพ้ชนะ: ไม่มี base payout จ่ายผ่านเควสเวลา (ขั้นเวลาตั้งที่หน้า Quests ผูก tag)</div></div>
+        <div class="r3">
+          <div class="f"><label>Checkpoint (วินาที)</label><div class="in">300</div></div>
+          <div class="f"><label>Idle timeout (วินาที)</label><div class="in">300</div></div>
+          <div class="f"><label>Co-players ขั้นต่ำ</label><div class="in">2</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="adm-foot"><span class="sp">เกม draft ทดสอบเล่นได้ แต่ไม่จ่ายเหรียญ</span><span class="btn">บันทึก draft</span><span class="btn">ทดสอบเล่น</span><span class="btn pri">Publish</span></div>
+  </div>
+  <div class="adm-note">
+    <span><span class="pill old">มีแล้ว</span> ฟอร์มเกมปัจจุบัน</span>
+    <span><span class="pill nw">ใหม่</span> ช่องสำหรับ reward / integration</span>
+    <span><b>หมายเหตุ:</b> ตอนนี้ฟอร์มรับ Minimum players ตั้งแต่ 1 ต้องแก้เป็น ≥ 2 เพราะทุกเกมเป็น multiplayer</span>
+  </div>
+</section>
+
+<!-- 7. admin manifest + edge cases -->
+<section>
+  <div class="kicker">แอดมิน + กรณีขอบ</div>
+  <h2>เพิ่มเกมจากหน้าแอดมิน</h2>
+  <p class="lead">ลงทะเบียนเกมครั้งเดียว ระบบ reward ที่เหลือใช้ร่วมกัน</p>
+  <div class="manifest">
+    <span class="m"><code>slug</code> / ชื่อ</span>
+    <span class="m"><code>launchUrl</code> (origin ของ iframe)</span>
+    <span class="m"><code>secret</code> เซ็นผล/checkpoint</span>
+    <span class="m"><code>webhookUrl</code> (ตัวเลือก)</span>
+    <span class="m"><code>tags</code></span>
+    <span class="m"><code>minPlayers ≥ 2</code> / <code>maxPlayers</code></span>
+    <span class="m">placement: <code>minDurationMs</code></span>
+    <span class="m">placement: ตาราง payout ตามอันดับ × จำนวนผู้เล่น</span>
+    <span class="m">โหมด reward: <code>placement</code> / <code>time_only</code></span>
+    <span class="m">time_only: <code>checkpointIntervalSec</code> · <code>idleTimeoutSec</code> · <code>minCoPlayers</code></span>
+    <span class="m">สถานะ <code>draft</code> (ทดสอบ ไม่จ่ายเหรียญ) / <code>live</code></span>
+  </div>
+  <table>
+    <thead><tr><th>กรณี</th><th>ระบบทำอะไร</th></tr></thead>
+    <tbody>
+      <tr><td>ผู้เล่นหลุดกลางเกม</td><td>ไม่ได้ reward ตามค่าเริ่มต้น · คนที่เหลือจบตามผลเกม</td></tr>
+      <tr><td>Session ค้าง ไม่มีผลส่งมา</td><td>timeout → ปิดเป็น <code>abandoned</code> ไม่จ่าย</td></tr>
+      <tr><td>ผลถูกส่งซ้ำ / เครือข่ายล้ม</td><td>เกม retry ได้ · idempotent ด้วย <code>sessionId</code></td></tr>
+      <tr><td>ผลไม่ตรง (คนนอก session, เร็วผิดปกติ)</td><td>ปฏิเสธ + log ให้แอดมิน</td></tr>
+      <tr><td>เกมเสมอ / ทีมได้อันดับร่วม</td><td>รองรับในรูปแบบผลมาตรฐานตั้งแต่แรก</td></tr>
+      <tr><td>ห้องถาวรเปิดค้าง (time_only)</td><td>ไม่มีจุดจบ ใช้ checkpoint · key <code>room:&lt;id&gt;:&lt;user&gt;:&lt;n&gt;</code> ส่งซ้ำได้</td></tr>
+      <tr><td>ขั้นเวลาที่ปลดล็อกแล้วไม่กดรับ</td><td>รับได้ถึงสิ้นวันถัดไป แล้วหมดอายุ</td></tr>
+    </tbody>
+  </table>
+  <div class="open"><b>ยังเปิดอยู่:</b> คนหลุดกลางเกมได้ 0 หรือค่าพื้นฐาน · เกมทีมแบ่งเหรียญเท่ากันหรือตามผลงาน · เกณฑ์ลดรางวัลคู่ซ้ำ (นับรอบหรือต่อวัน)</div>
+</section>
+
+<div class="hint">← → / PageUp PageDown เลื่อนสไลด์</div>
+<script>
+  (function () {
+    var secs = Array.prototype.slice.call(document.querySelectorAll('section'));
+    function current() {
+      var y = window.scrollY + window.innerHeight / 2, i = 0;
+      secs.forEach(function (s, n) { if (s.offsetTop <= y) i = n; });
+      return i;
+    }
+    document.addEventListener('keydown', function (e) {
+      var d = 0;
+      if (e.key === 'ArrowRight' || e.key === 'PageDown') d = 1;
+      if (e.key === 'ArrowLeft' || e.key === 'PageUp') d = -1;
+      if (!d) return;
+      e.preventDefault();
+      var n = Math.max(0, Math.min(secs.length - 1, current() + d));
+      secs[n].scrollIntoView({ behavior: 'smooth' });
+    });
+  })();
+</script>
+</body>
+</html>

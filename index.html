@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#829e72">
+  <link rel="icon" href="data:,">
+  <title>Putt Pocket</title>
+</head>
+<body>
+  <main id="game">
+    <canvas id="course" tabindex="0" aria-label="Mini golf course" aria-describedby="instructions"></canvas>
+    <header class="hud">
+      <div class="pill identity">
+        <h1>PUTT <span>POCKET</span></h1>
+        <span class="hole">HOLE <b id="hole-number">1</b> / <span id="hole-count">6</span></span>
+      </div>
+      <div id="timer" class="pill timer" aria-label="Time remaining">1:15</div>
+      <div class="scores">
+        <div class="pill score" aria-label="Your strokes"><i id="my-color"></i><span id="score">0</span></div>
+        <div class="pill score" id="rival-score" aria-label="Opponent strokes" hidden><i></i><span id="rival-strokes">0</span></div>
+      </div>
+    </header>
+    <section class="course-info" aria-label="Current course">
+      <span id="course-country" class="pill">Japan</span>
+      <span id="course-name" class="pill">Kyoto Stone Garden</span>
+      <span id="running-total" class="pill" hidden></span>
+    </section>
+    <div class="room-tools">
+      <select id="practice-hole" aria-label="Practice hole"></select>
+      <span id="live-code" class="pill" hidden></span>
+      <button id="room-button" type="button">Play with a friend</button>
+    </div>
+    <dialog id="lobby" class="result-card" aria-labelledby="lobby-title">
+      <h2 id="lobby-title">Play with a friend</h2>
+      <div id="lobby-actions">
+        <button id="create-room" type="button">Create room</button>
+        <form id="join-room">
+          <label for="room-code">Room code</label>
+          <div class="join-controls">
+            <input id="room-code" name="code" required pattern="[A-Za-z2-9]{5}" maxlength="5" placeholder="ABCDE" autocomplete="off" spellcheck="false">
+            <button type="submit">Join</button>
+          </div>
+        </form>
+      </div>
+      <div id="waiting-room" hidden>
+        <p id="invite-code"></p>
+        <p>Share this code. The round starts when your friend joins.</p>
+      </div>
+      <p id="lobby-status" role="status"></p>
+      <button id="lobby-close" class="secondary" type="button">Back to practice</button>
+    </dialog>
+    <footer class="controls">
+      <p id="instructions">Drag back from the ball and release to putt.</p>
+      <div class="pill stroke">
+        <span>STROKE <b id="stroke">1</b> / 6</span>
+        <div id="power" role="meter" aria-label="Shot power" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+      </div>
+    </footer>
+    <section id="turnover" class="result turnover" hidden aria-labelledby="turnover-title">
+      <div class="result-card">
+        <h2 id="turnover-title"></h2>
+        <p id="turnover-scores"></p>
+        <p id="turnover-count"></p>
+      </div>
+    </section>
+    <section id="result" class="result" hidden aria-labelledby="result-title">
+      <div class="result-card">
+        <p id="result-context">HOLE 1 · KYOTO STONE GARDEN</p>
+        <h2 id="result-title"></h2>
+        <p id="result-score"></p>
+        <ol id="standings" aria-label="Final standings" hidden></ol>
+        <button id="replay" type="button">Play again</button>
+      </div>
+    </section>
+    <p id="game-error" hidden>This browser could not start the 3D course. Try a browser with WebGL enabled.</p>
+  </main>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
