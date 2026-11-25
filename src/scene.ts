@@ -2,10 +2,11 @@ import * as T from 'three';
 import { PLAYER_COLORS, type Seat } from './room-protocol';
 import { ALPINE_ICE, ARENA_COLUMNS, ARENA_SAND, BALL_RADIUS, BRIDGE, BUMPERS, COURSES, CUP_RADIUS, FJORD_WIND,
   fjordWind, GATE, gateClearsBall, gateLift, groundHeight, HANOK_GATES, hanokGateLift, SHELTER_ROCKS,
-  WALL_SWITCHBACKS, YUCATAN_CHUTE, type Point } from './golf';
-import { decorateCourse, palettes } from './themes';
+  WALL_SWITCHBACKS, YUCATAN_CHUTE, type CourseLayout, type Point } from './golf';
+import { decorateCourse, decorateFloatingMarketPlayfield, decorateLoyKrathong, decorateSongkran, palettes } from './themes';
 import { golfBallMaterials, makeEffects, type Burst } from './fx';
 import { flyCountryFlag } from './flags';
+import { decorateAlternate } from './alternate-scene';
 
 const geometry = {
   box: new T.BoxGeometry(),
@@ -183,32 +184,66 @@ function fjordWindMarkers(group: T.Group) {
 }
 
 function course(scene: T.Group, index: number) {
-  const { outline, cup: CUP, walls, flag } = COURSES[index];
-  const shape = new T.Shape(outline.map(({ x, z }) => new T.Vector2(x, -z)));
-  const hole = new T.Path();
-  hole.absarc(CUP.x, -CUP.z, CUP_RADIUS, 0, Math.PI * 2, true);
-  shape.holes.push(hole);
-  if (index === 1) {
-    for (const [top, bottom] of [[BRIDGE.top, BRIDGE.deckTop], [BRIDGE.deckBottom, BRIDGE.bottom - 0.012]]) {
-      const water = new T.Path([
-        new T.Vector2(BRIDGE.left, -top), new T.Vector2(BRIDGE.left, -bottom),
-        new T.Vector2(BRIDGE.right, -bottom), new T.Vector2(BRIDGE.right, -top),
-        new T.Vector2(BRIDGE.left, -top),
-      ]);
-      shape.holes.push(water);
-    }
-  }
+  const { layouts, flag } = COURSES[index];
   const palette = palettes[index];
-  const turf = matte(palette.grass);
   const curb = matte(palette.curb);
   const cap = matte(palette.trim);
-  turf.onBeforeCompile = (shader) => {
-    shader.vertexShader = 'varying float grassX;\n' + shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\ngrassX = position.x;');
-    shader.fragmentShader = 'varying float grassX;\n' + shader.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= mix(0.88, 1.0, step(0.5, fract(grassX * 0.63)));');
-  };
-  const green = mesh(scene, new T.ShapeGeometry(shape, 32), turf, 0, 0, 0);
-  green.rotation.x = -Math.PI / 2;
-  green.castShadow = false;
+  function stripedTurf(color: number) {
+    const turf = matte(color);
+    turf.onBeforeCompile = (shader) => {
+      shader.vertexShader = 'varying float grassX;\n' + shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\ngrassX = position.x;');
+      shader.fragmentShader = 'varying float grassX;\n' + shader.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= mix(0.88, 1.0, step(0.5, fract(grassX * 0.63)));');
+    };
+    return turf;
+  }
+  const turf = stripedTurf(palette.grass);
+  const variants = layouts.map(({ cup, outline, walls }, layout) => {
+    const group = new T.Group();
+    scene.add(group);
+    const shape = new T.Shape(outline.map(({ x, z }) => new T.Vector2(x, -z)));
+    const hole = new T.Path();
+    hole.absarc(cup.x, -cup.z, CUP_RADIUS, 0, Math.PI * 2, true);
+    shape.holes.push(hole);
+    if (index === 1 && layout === 0) {
+      for (const [top, bottom] of [[BRIDGE.top, BRIDGE.deckTop], [BRIDGE.deckBottom, BRIDGE.bottom - 0.012]]) {
+        const water = new T.Path([
+          new T.Vector2(BRIDGE.left, -top), new T.Vector2(BRIDGE.left, -bottom),
+          new T.Vector2(BRIDGE.right, -bottom), new T.Vector2(BRIDGE.right, -top),
+          new T.Vector2(BRIDGE.left, -top),
+        ]);
+        shape.holes.push(water);
+      }
+    }
+    if (layout === 1) {
+      for (const zone of layouts[1].zones ?? []) {
+        if (zone.kind === 'water') shape.holes.push(new T.Path(zone.outline.map(({ x, z }) => new T.Vector2(x, -z))));
+      }
+    }
+    const turfPaint = layout === 0 ? turf : stripedTurf(new T.Color(palette.grass).lerp(new T.Color(0x468b72), 0.44).getHex());
+    const green = mesh(group, new T.ShapeGeometry(shape, 32), turfPaint, 0, 0, 0);
+    green.rotation.x = -Math.PI / 2;
+    green.castShadow = false;
+    mesh(group, new T.CylinderGeometry(CUP_RADIUS, CUP_RADIUS * 0.78, 0.025, 32), colors.ink, cup.x, -0.185, cup.z);
+    mesh(group, new T.TorusGeometry(CUP_RADIUS, 0.025, 7, 32), cap, cup.x, 0.006, cup.z).rotation.x = -Math.PI / 2;
+
+    for (const wall of walls) {
+      const count = Math.ceil(wall.length / 1.2);
+      const length = wall.length / count;
+      for (let index = 0; index < count; index++) {
+        const t = (index + 0.5) / count;
+        const x = wall.from.x + wall.dx * t - wall.nx * 0.15;
+        const z = wall.from.z + wall.dz * t - wall.nz * 0.15;
+        const angle = -Math.atan2(wall.dz, wall.dx);
+        box(group, curb, x, -0.02, z, length - 0.014, 0.59, 0.306).rotation.y = angle;
+        box(group, cap, x, 0.26, z, length - 0.024, 0.11, 0.321).rotation.y = angle;
+      }
+    }
+    for (const corner of outline) {
+      const joint = mesh(group, new T.CylinderGeometry(0.162, 0.162, 0.612, 8), curb, corner.x, -0.019, corner.z);
+      joint.scale.set(0.92, 1, 0.92);
+    }
+    return group;
+  });
   if (index === 3) {
     const hill = new T.PlaneGeometry(4.49, 5.33, 44, 45).rotateX(-Math.PI / 2);
     const vertices = hill.attributes.position;
@@ -218,33 +253,16 @@ function course(scene: T.Group, index: number) {
       vertices.setY(i, groundHeight(index, vertices.getX(i), z) + 0.0025);
     }
     hill.computeVertexNormals();
-    const surface = mesh(scene, hill, turf, 0, 0, 0);
+    const surface = mesh(variants[0], hill, turf, 0, 0, 0);
     surface.castShadow = true;
-    alpineIce(scene);
+    alpineIce(variants[0]);
   }
 
-  for (const wall of walls) {
-    const count = Math.ceil(wall.length / 1.2);
-    const length = wall.length / count;
-    for (let index = 0; index < count; index++) {
-      const t = (index + 0.5) / count;
-      const x = wall.from.x + wall.dx * t - wall.nx * 0.15;
-      const z = wall.from.z + wall.dz * t - wall.nz * 0.15;
-      const angle = -Math.atan2(wall.dz, wall.dx);
-      box(scene, curb, x, -0.02, z, length - 0.014, 0.59, 0.306).rotation.y = angle;
-      box(scene, cap, x, 0.26, z, length - 0.024, 0.11, 0.321).rotation.y = angle;
-    }
-  }
-  for (const corner of outline) {
-    const joint = mesh(scene, new T.CylinderGeometry(0.162, 0.162, 0.612, 8), curb, corner.x, -0.019, corner.z);
-    joint.scale.set(0.92, 1, 0.92);
-  }
-
-  mesh(scene, new T.CylinderGeometry(CUP_RADIUS, CUP_RADIUS * 0.78, 0.025, 32), colors.ink, CUP.x, -0.185, CUP.z);
-  mesh(scene, new T.TorusGeometry(CUP_RADIUS, 0.025, 7, 32), cap, CUP.x, 0.006, CUP.z).rotation.x = -Math.PI / 2;
-  mesh(scene, new T.CylinderGeometry(0.024, 0.024, 1.53, 10), colors.yellow, CUP.x, 0.62, CUP.z);
-  mesh(scene, geometry.sphere, colors.yellow, CUP.x, 1.4, CUP.z).scale.setScalar(0.046);
-  flyCountryFlag(scene, flag, CUP);
+  const flagAnchor = new T.Group();
+  scene.add(flagAnchor);
+  mesh(flagAnchor, new T.CylinderGeometry(0.024, 0.024, 1.53, 10), colors.yellow, 0, 0.62, 0);
+  mesh(flagAnchor, geometry.sphere, colors.yellow, 0, 1.4, 0).scale.setScalar(0.046);
+  return { variants, flagAnchor, flagReady: flyCountryFlag(flagAnchor, flag, { x: 0, z: 0 }) };
 }
 
 function timberBridge(group: T.Group) {
@@ -450,34 +468,46 @@ export function makeScene(canvas: HTMLCanvasElement) {
   const ground = new T.Plane(new T.Vector3(0, 1, 0), 0);
   const setPaving = paving(scene);
   const effects = makeEffects(scene);
-  const courses = COURSES.map((_, index) => {
+  const courses = COURSES.map(() => {
     const group = new T.Group();
     scene.add(group);
-    course(group, index);
     return group;
   });
+  const boards = courses.map(course);
   const animateScenery = courses.map(decorateCourse);
-  const animateBridge = timberBridge(courses[1]);
-  colosseumArena(courses[2]);
-  pinball(courses[4]);
-  const gate = nileGate(courses[5]);
-  greatWall(courses[6]);
-  const updateHanokGates = hanokGates(courses[7]);
-  yucatanTerrace(courses[8]);
-  const updateWind = fjordWindMarkers(courses[9]);
+  const animateAlternate = boards.map(({ variants }, index) => decorateAlternate(variants[1], index));
+  const animateBridge = timberBridge(boards[1].variants[0]);
+  decorateFloatingMarketPlayfield(boards[1].variants[0]);
+  const animateThaiFestival = [decorateSongkran(boards[1].variants[0]), decorateLoyKrathong(boards[1].variants[1])] as const;
+  colosseumArena(boards[2].variants[0]);
+  pinball(boards[4].variants[0]);
+  const gate = nileGate(boards[5].variants[0]);
+  greatWall(boards[6].variants[0]);
+  const updateHanokGates = hanokGates(boards[7].variants[0]);
+  yucatanTerrace(boards[8].variants[0]);
+  const updateWind = fjordWindMarkers(boards[9].variants[0]);
   let activeHole = -1;
-  function setHole(index: number) {
-    if (activeHole === index) return;
+  let activeLayout: CourseLayout = 0;
+  const surfaceAt = (x: number, z: number) => groundHeight(activeHole, x, z, activeLayout);
+  function setHole(index: number, layout: CourseLayout = 0) {
+    if (activeHole === index && activeLayout === layout) return;
     activeHole = index;
+    activeLayout = layout;
     courses.forEach((group, position) => { group.visible = position === index; });
+    const { variants, flagAnchor } = boards[index];
+    variants.forEach((group, position) => { group.visible = position === layout; });
+    const cup = COURSES[index].layouts[layout].cup;
+    flagAnchor.position.set(cup.x, 0, cup.z);
     const palette = palettes[index];
-    setPaving(palette.paving);
-    (scene.background as T.Color).setHex(palette.sky);
-    (scene.fog as T.Fog).color.setHex(palette.sky);
-    ambient.color.setHex(index === 9 ? 0xd8ebff : 0xfff8ed);
+    const thaiNight = index === 1 && layout === 1;
+    const sky = thaiNight ? 0x253e54 : palette.sky;
+    setPaving(thaiNight ? 0x4c6275 : palette.paving);
+    (scene.background as T.Color).setHex(sky);
+    (scene.fog as T.Fog).color.setHex(sky);
+    ambient.color.setHex(index === 9 || thaiNight ? 0xd8ebff : 0xfff8ed);
     ambient.intensity = index === 9 ? 1.6 : 2.1;
-    sun.color.setHex(index === 9 ? 0xc1e1ef : 0xffeac9);
-    sun.intensity = index === 9 ? 1.15 : 1.9;
+    sun.color.setHex(index === 9 || thaiNight ? 0xc1e1ef : 0xffeac9);
+    sun.intensity = thaiNight ? 0.90 : index === 9 ? 1.15 : 1.9;
     effects.clear();
     lastBall = lastRival = null;
     slingRelease = null;
@@ -543,7 +573,6 @@ export function makeScene(canvas: HTMLCanvasElement) {
     return dot;
   });
 
-  let introView = false;
   function resize() {
     const width = canvas.clientWidth;
     const height = Math.max(1, canvas.clientHeight);
@@ -554,9 +583,8 @@ export function makeScene(canvas: HTMLCanvasElement) {
     const halfHeight = Math.max(scenicHeight, (portrait && activeHole > 0 ? 6.55 : 6.15) / aspect);
     camera.position.set(portrait ? 2.3 : 2.0, portrait ? 14 : 9, 12);
     camera.lookAt(portrait ? -0.45 : 0.85, !portrait && activeHole === 9 ? 0.68 : 0, portrait ? 0.04 : -0.25);
-    const shift = introView && width >= 800 && aspect >= 1.2 ? -halfHeight * aspect * 0.30 : 0;
-    camera.left = -halfHeight * aspect + shift;
-    camera.right = halfHeight * aspect + shift;
+    camera.left = -halfHeight * aspect;
+    camera.right = halfHeight * aspect;
     camera.top = halfHeight;
     camera.bottom = -halfHeight;
     camera.updateProjectionMatrix();
@@ -575,12 +603,12 @@ export function makeScene(canvas: HTMLCanvasElement) {
 
   function ballScreenPosition(x: number, z: number) {
     const rect = canvas.getBoundingClientRect();
-    const point = new T.Vector3(x, groundHeight(activeHole, x, z) + BALL_RADIUS, z).project(camera);
+    const point = new T.Vector3(x, surfaceAt(x, z) + BALL_RADIUS, z).project(camera);
     return { x: rect.left + (point.x + 1) * rect.width / 2, y: rect.top + (1 - point.y) * rect.height / 2 };
   }
 
   function emit(kind: Burst, point: Point, seat: Seat) {
-    effects.burst(kind, point, groundHeight(activeHole, point.x, point.z), PLAYER_COLORS[seat]);
+    effects.burst(kind, point, surfaceAt(point.x, point.z), PLAYER_COLORS[seat]);
   }
 
   function roll(mesh: T.Mesh, previous: Point | null, current: Point, seat: Seat, trail: boolean) {
@@ -594,7 +622,7 @@ export function makeScene(canvas: HTMLCanvasElement) {
     if (distance < 0.002 || distance > 0.7) return;
     rollAxis.set(dz, 0, -dx).normalize();
     mesh.quaternion.premultiply(turn.setFromAxisAngle(rollAxis, distance / BALL_RADIUS));
-    if (trail && distance > 0.035) effects.trail(previous, groundHeight(activeHole, previous.x, previous.z), PLAYER_COLORS[seat]);
+    if (trail && distance > 0.035) effects.trail(previous, surfaceAt(previous.x, previous.z), PLAYER_COLORS[seat]);
   }
 
   function releaseSling(position: Point, aim: Aim) {
@@ -608,12 +636,12 @@ export function makeScene(canvas: HTMLCanvasElement) {
     rubber.color.copy(relaxed).lerp(taut, Math.pow(aim.power, 1.8));
     grip.position.x = position.x - dx * stretch;
     grip.position.z = position.z - dz * stretch;
-    grip.position.y = groundHeight(activeHole, grip.position.x, grip.position.z) + 0.099;
+    grip.position.y = surfaceAt(grip.position.x, grip.position.z) + 0.099;
     anchors.forEach((anchor, index) => {
       const side = index === 0 ? -0.39 : 0.39;
       anchor.position.x = position.x + dx * 0.10 - dz * side;
       anchor.position.z = position.z + dz * 0.10 + dx * side;
-      anchor.position.y = groundHeight(activeHole, anchor.position.x, anchor.position.z) + 0.10;
+      anchor.position.y = surfaceAt(anchor.position.x, anchor.position.z) + 0.10;
       const strand = strands[index];
       strandVector.subVectors(grip.position, anchor.position);
       strand.position.copy(anchor.position).addScaledVector(strandVector, 0.5);
@@ -624,11 +652,16 @@ export function makeScene(canvas: HTMLCanvasElement) {
 
   function render(position: Point, ballHeight: number, aim: Aim | null, ready: boolean,
     seat: Seat = 0, rival?: Point & { sunk: boolean }, elapsedSeconds = 0) {
-    if (activeHole === 5) gate.position.y = gateLift(elapsedSeconds);
-    if (activeHole === 7) updateHanokGates.forEach((update) => update(elapsedSeconds));
-    if (activeHole === 9) updateWind(elapsedSeconds);
     const sceneryTime = reduceMotion ? 0 : elapsedSeconds;
-    if (activeHole === 1) animateBridge(sceneryTime);
+    if (activeLayout === 0) {
+      if (activeHole === 5) gate.position.y = gateLift(elapsedSeconds);
+      if (activeHole === 7) updateHanokGates.forEach((update) => update(elapsedSeconds));
+      if (activeHole === 9) updateWind(elapsedSeconds);
+      if (activeHole === 1) animateBridge(sceneryTime);
+    } else {
+      animateAlternate[activeHole](elapsedSeconds);
+    }
+    if (activeHole === 1) animateThaiFestival[activeLayout](sceneryTime);
     animateScenery[activeHole]?.(sceneryTime);
     const now = performance.now();
     sling.visible = false;
@@ -653,7 +686,7 @@ export function makeScene(canvas: HTMLCanvasElement) {
     if (rival && opponent.visible) {
       const overlapping = ballHeight > -0.15 && Math.hypot(rival.x - position.x, rival.z - position.z) < BALL_RADIUS * 2;
       // Indicate overlap with color and transparency while keeping the rival at its true position.
-      const surface = groundHeight(activeHole, rival.x, rival.z);
+      const surface = surfaceAt(rival.x, rival.z);
       opponent.position.set(rival.x, BALL_RADIUS + surface, rival.z);
       roll(opponent, lastRival, rival, (1 - seat) as Seat, trail);
       lastRival = { ...rival };
@@ -665,7 +698,7 @@ export function makeScene(canvas: HTMLCanvasElement) {
         opponentOutline.visible = true;
       }
     } else lastRival = null;
-    const surface = groundHeight(activeHole, position.x, position.z);
+    const surface = surfaceAt(position.x, position.z);
     roll(ball, lastBall, position, seat, trail && ballHeight >= BALL_RADIUS);
     lastBall = { ...position };
     ball.position.set(position.x, surface + ballHeight, position.z);
@@ -676,14 +709,14 @@ export function makeScene(canvas: HTMLCanvasElement) {
     arrow.visible = ready && !sling.visible;
     arrow.position.x = position.x - Math.cos(angle) * 0.74;
     arrow.position.z = position.z - Math.sin(angle) * 0.74;
-    arrow.position.y = groundHeight(activeHole, arrow.position.x, arrow.position.z) + 0.040;
+    arrow.position.y = surfaceAt(arrow.position.x, arrow.position.z) + 0.040;
     arrow.rotation.y = -Math.PI / 2 - angle;
     guide.visible = aim !== null && aim.power > 0.025;
     if (aim && guide.visible) {
       const x = Math.cos(aim.angle);
       const z = Math.sin(aim.angle);
       let limit = 0.6 + aim.power * 6.7;
-      for (const wall of COURSES[activeHole].walls) {
+      for (const wall of COURSES[activeHole].layouts[activeLayout].walls) {
         const normal = x * wall.nx + z * wall.nz;
         if (normal >= -0.0001) continue;
         const distance = (BALL_RADIUS - (position.x - wall.from.x) * wall.nx - (position.z - wall.from.z) * wall.nz) / normal;
@@ -691,17 +724,18 @@ export function makeScene(canvas: HTMLCanvasElement) {
         const segment = ((position.x + x * distance - wall.from.x) * wall.dx + (position.z + z * distance - wall.from.z) * wall.dz) / wall.length ** 2;
         if (segment >= 0 && segment <= 1) limit = distance;
       }
-      if (activeHole === 2) {
-        for (const column of ARENA_COLUMNS) {
-          const dx = column.x - position.x;
-          const dz = column.z - position.z;
-          const along = dx * x + dz * z;
-          const perpendicular = dx * z - dz * x;
-          const radius = column.radius + BALL_RADIUS;
-          if (along > 0 && Math.abs(perpendicular) < radius) {
-            const contact = along - Math.sqrt(radius * radius - perpendicular * perpendicular);
-            limit = Math.min(limit, Math.max(0, contact));
-          }
+      const obstacles = activeLayout === 1
+        ? COURSES[activeHole].layouts[1].obstacles ?? []
+        : activeHole === 2 ? ARENA_COLUMNS : [];
+      for (const obstacle of obstacles) {
+        const dx = obstacle.x - position.x;
+        const dz = obstacle.z - position.z;
+        const along = dx * x + dz * z;
+        const perpendicular = dx * z - dz * x;
+        const radius = obstacle.radius + BALL_RADIUS;
+        if (along > 0 && Math.abs(perpendicular) < radius) {
+          const contact = along - Math.sqrt(radius * radius - perpendicular * perpendicular);
+          limit = Math.min(limit, Math.max(0, contact));
         }
       }
       dots.forEach((dot, index) => {
@@ -709,7 +743,7 @@ export function makeScene(canvas: HTMLCanvasElement) {
         dot.visible = distance <= limit;
         const px = position.x + x * distance;
         const pz = position.z + z * distance;
-        dot.position.set(px, groundHeight(activeHole, px, pz) + 0.030, pz);
+        dot.position.set(px, surfaceAt(px, pz) + 0.030, pz);
       });
     }
     effects.update(delta);
@@ -719,9 +753,9 @@ export function makeScene(canvas: HTMLCanvasElement) {
   setHole(0);
   return {
     resize, pointAt, ballScreenPosition, render, setHole, emit, releaseSling,
-    setIntroView(visible: boolean) {
-      introView = visible;
-      resize();
+    async prepare() {
+      for (const texture of await Promise.all(boards.map(({ flagReady }) => flagReady))) renderer.initTexture(texture);
+      await renderer.compileAsync(scene, camera);
     },
   };
 }

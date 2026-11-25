@@ -1,5 +1,9 @@
+import { alternateCourses, insideOutline, type CourseRail } from './alternate-courses.ts';
+
 // Coordinates are in the ground plane. The scene uses the same outline for its curbs.
 export type Point = { x: number; z: number };
+export type CourseLayout = 0 | 1;
+export const LAYOUT_LABELS = ['A', 'B'] as const;
 
 const GARDEN: readonly Point[] = [
   { x: -5.4, z: -3.75 }, { x: 3.1, z: -3.75 }, { x: 4.45, z: -2.4 },
@@ -87,7 +91,8 @@ function ease(value: number): number {
   return t * t * (3 - 2 * t);
 }
 
-export function groundHeight(hole: number, x: number, z: number): number {
+export function groundHeight(hole: number, x: number, z: number, layout: CourseLayout = 0): number {
+  if (layout === 1) return 0;
   if (hole === 8) {
     const rise = ease((x - 0.37) / 1.12);
     const teeEdge = ease((5.34 - x) / 0.84);
@@ -101,7 +106,7 @@ export function groundHeight(hole: number, x: number, z: number): number {
 }
 const holes = [
   { name: 'Kyoto Stone Garden', country: 'Japan', flag: 'jp', outline: GARDEN, start: { x: 3.05, z: 3.25 }, cup: { x: -4.38, z: -2.43 } },
-  { name: 'Floating Market', country: 'Thailand', flag: 'th', outline: rectangle(-5.35, -3.65, 5.35, 3.45), start: { x: 4.25, z: 1.95 }, cup: { x: -4.25, z: -1.02 } },
+  { name: 'Songkran', country: 'Thailand', flag: 'th', outline: rectangle(-5.35, -3.65, 5.35, 3.45), start: { x: 4.25, z: 1.95 }, cup: { x: -4.25, z: -1.02 } },
   { name: 'Colosseum Arena', country: 'Italy', flag: 'it', outline: [
     { x: -5.35, z: -2.12 }, { x: -4.43, z: -3.19 }, { x: -2.54, z: -3.66 },
     { x: 2.55, z: -3.66 }, { x: 4.40, z: -3.18 }, { x: 5.35, z: -2.18 },
@@ -128,18 +133,27 @@ const holes = [
     { x: 5.35, z: 2.2 }, { x: 4.33, z: 3.40 }, { x: -4.2, z: 3.40 }, { x: -5.35, z: 2.3 },
   ], start: { x: 4.23, z: 0.74 }, cup: { x: -4.22, z: -0.55 } },
 ] as const;
-export const COURSES = holes.map((hole, index) => ({
-  ...hole,
-  initialAngle: index === 0 || index === 6 ? -Math.PI / 2 : Math.PI,
-  seconds: index < 6 ? 52 : 67,
-  walls: hole.outline.map((from, index) => {
-    const to = hole.outline[(index + 1) % hole.outline.length];
+function boundaryWalls(outline: readonly Point[]) {
+  return outline.map((from, index) => {
+    const to = outline[(index + 1) % outline.length];
     const dx = to.x - from.x;
     const dz = to.z - from.z;
     const length = Math.hypot(dx, dz);
     return { from, dx, dz, length, nx: -dz / length, nz: dx / length };
-  }),
-}));
+  });
+}
+
+export const COURSES = holes.map((hole, index) => {
+  const walls = boundaryWalls(hole.outline);
+  const alternate = alternateCourses[index];
+  return {
+    ...hole,
+    layouts: [{ ...hole, walls }, { ...alternate, walls: boundaryWalls(alternate.outline) }] as const,
+    initialAngle: index === 0 || index === 6 ? -Math.PI / 2 : Math.PI,
+    seconds: index < 6 ? 52 : 67,
+    walls,
+  };
+});
 export const TURNOVER_SECONDS = 4;
 export function waterAt(x: number, z: number): boolean {
   return x > BRIDGE.left && x < BRIDGE.right && z > BRIDGE.top
@@ -147,7 +161,9 @@ export function waterAt(x: number, z: number): boolean {
 }
 
 export type Ball = Point & { vx: number; vz: number; sunk: boolean; impacts?: number };
-export const createBall = (hole = 0): Ball => ({ ...COURSES[hole].start, vx: 0, vz: 0, sunk: false });
+export const createBall = (hole = 0, layout: CourseLayout = 0): Ball => ({
+  ...COURSES[hole].layouts[layout].start, vx: 0, vz: 0, sunk: false,
+});
 export const moving = (ball: Ball) => ball.vx !== 0 || ball.vz !== 0;
 
 export function launch(ball: Ball, angle: number, power: number): void {
@@ -157,24 +173,28 @@ export function launch(ball: Ball, angle: number, power: number): void {
   ball.vz = Math.sin(angle) * speed;
 }
 
-export function stepBall(ball: Ball, hole = 0, elapsedSeconds = 0): void {
+export function stepBall(ball: Ball, hole = 0, elapsedSeconds = 0, layout: CourseLayout = 0): void {
   if (!moving(ball) || ball.sunk) return;
   const previousX = ball.x;
-  if (hole === 3 || hole === 8) {
+  const course = COURSES[hole];
+  const alternate = layout === 1 ? course.layouts[1] : null;
+  if (!alternate && (hole === 3 || hole === 8)) {
     const sample = 0.015;
     const gravity = 8 * STEP / (2 * sample);
     ball.vx -= gravity * (groundHeight(hole, ball.x + sample, ball.z) - groundHeight(hole, ball.x - sample, ball.z));
     ball.vz -= gravity * (groundHeight(hole, ball.x, ball.z + sample) - groundHeight(hole, ball.x, ball.z - sample));
   }
-  if (hole === 9 && ball.x > FJORD_WIND.left && ball.x < FJORD_WIND.right
-    && ball.z > FJORD_WIND.top && ball.z < FJORD_WIND.bottom) {
-    ball.vz += fjordWind(elapsedSeconds) * STEP;
+  if (hole === 9) {
+    const exposed = alternate
+      ? alternate.zones?.some((zone) => zone.kind === 'wind' && insideOutline(ball, zone.outline))
+      : ball.x > FJORD_WIND.left && ball.x < FJORD_WIND.right && ball.z > FJORD_WIND.top && ball.z < FJORD_WIND.bottom;
+    if (exposed) ball.vz += fjordWind(elapsedSeconds) * STEP;
   }
   ball.x += ball.vx * STEP;
   ball.z += ball.vz * STEP;
 
   // The small fixed step keeps the ball within collision range even at full power.
-  for (const wall of COURSES[hole].walls) {
+  for (const wall of course.layouts[layout].walls) {
     const t = Math.max(0, Math.min(1, ((ball.x - wall.from.x) * wall.dx + (ball.z - wall.from.z) * wall.dz) / wall.length ** 2));
     const dx = ball.x - (wall.from.x + wall.dx * t);
     const dz = ball.z - (wall.from.z + wall.dz * t);
@@ -195,6 +215,40 @@ export function stepBall(ball: Ball, hole = 0, elapsedSeconds = 0): void {
     }
   }
 
+  if (alternate) {
+    for (const rail of alternate.rails ?? []) bounceOnRail(ball, rail);
+    for (const gate of alternate.gates ?? []) {
+      if (!gateClearsBall(hanokGateLift(elapsedSeconds, gate.phase))) bounceOnRail(ball, gate);
+    }
+    for (const obstacle of alternate.obstacles ?? []) {
+      bounceOff(ball, obstacle.x, obstacle.z, obstacle.radius, obstacle.rebound ?? 0.66);
+    }
+  } else {
+    applyOriginalObstacles(ball, hole, elapsedSeconds, previousX);
+  }
+  const cup = course.layouts[layout].cup;
+  const speed = Math.hypot(ball.vx, ball.vz);
+  if (Math.hypot(ball.x - cup.x, ball.z - cup.z) <= CUP_RADIUS * 0.83 && speed < 3.25) {
+    Object.assign(ball, cup, { vx: 0, vz: 0, sunk: true });
+    return;
+  }
+  let friction = FRICTION;
+  if (alternate) {
+    for (const zone of alternate.zones ?? []) {
+      if (zone.kind === 'sand' && insideOutline(ball, zone.outline)) friction = 7.9;
+      if (zone.kind === 'ice' && insideOutline(ball, zone.outline)) friction = 0.63;
+    }
+  } else {
+    if (hole === 2 && inArenaSand(ball.x, ball.z)) friction = 7.9;
+    if (hole === 3 && onAlpineIce(ball.x, ball.z)) friction = 0.63;
+  }
+  const remaining = Math.min(MAX_SPEED * 1.1, Math.max(0, speed - friction * STEP));
+  const ratio = speed > 0 ? remaining / speed : 0;
+  ball.vx *= ratio;
+  ball.vz *= ratio;
+}
+
+function applyOriginalObstacles(ball: Ball, hole: number, elapsedSeconds: number, previousX: number) {
   if (hole === 1) {
     for (const basket of MARKET_BASKETS) bounceOff(ball, basket.x, basket.z, basket.radius, 0.58);
   }
@@ -237,24 +291,14 @@ export function stepBall(ball: Ball, hole = 0, elapsedSeconds = 0): void {
   if (hole === 9) {
     for (const rock of SHELTER_ROCKS) bounceOff(ball, rock.x, rock.z, rock.radius, 0.62);
   }
-  const cup = COURSES[hole].cup;
-  const speed = Math.hypot(ball.vx, ball.vz);
-  if (Math.hypot(ball.x - cup.x, ball.z - cup.z) <= CUP_RADIUS * 0.83 && speed < 3.25) {
-    Object.assign(ball, cup, { vx: 0, vz: 0, sunk: true });
-    return;
-  }
-  let friction = FRICTION;
-  if (hole === 2 && inArenaSand(ball.x, ball.z)) friction = 7.9;
-  if (hole === 3 && onAlpineIce(ball.x, ball.z)) friction = 0.63;
-  const remaining = Math.min(MAX_SPEED * 1.1, Math.max(0, speed - friction * STEP));
-  const ratio = speed > 0 ? remaining / speed : 0;
-  ball.vx *= ratio;
-  ball.vz *= ratio;
 }
 
-export function stepPutt(ball: Ball, hole: number, elapsedSeconds: number, lie: Point): Point | null {
-  stepBall(ball, hole, elapsedSeconds);
-  if (hole !== 1 || !waterAt(ball.x, ball.z)) return null;
+export function stepPutt(ball: Ball, hole: number, elapsedSeconds: number, lie: Point, layout: CourseLayout = 0): Point | null {
+  stepBall(ball, hole, elapsedSeconds, layout);
+  const inWater = layout === 1
+    ? COURSES[hole].layouts[1].zones?.some((zone) => zone.kind === 'water' && insideOutline(ball, zone.outline))
+    : hole === 1 && waterAt(ball.x, ball.z);
+  if (!inWater) return null;
   const splash = { x: ball.x, z: ball.z };
   Object.assign(ball, lie, { vx: 0, vz: 0 });
   return splash;
@@ -266,6 +310,13 @@ function recordImpact(ball: Ball, speed: number) {
 
 function bounceOnWall(ball: Ball, x: number, from: number, to: number, radius: number) {
   bounceOff(ball, x, Math.max(from, Math.min(to, ball.z)), radius);
+}
+
+function bounceOnRail(ball: Ball, { from, to, radius }: CourseRail) {
+  const dx = to.x - from.x;
+  const dz = to.z - from.z;
+  const t = Math.max(0, Math.min(1, ((ball.x - from.x) * dx + (ball.z - from.z) * dz) / (dx * dx + dz * dz)));
+  bounceOff(ball, from.x + t * dx, from.z + t * dz, radius);
 }
 
 function bounceOff(ball: Ball, x: number, z: number, radius: number, bounce = BOUNCE) {

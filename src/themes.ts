@@ -1,5 +1,6 @@
 import * as T from 'three';
 import { BRIDGE, MARKET_BASKETS } from './golf';
+import { alternateCourses } from './alternate-courses';
 
 export const palettes = [
   { grass: 0x779b4c, curb: 0x988c7c, trim: 0xe2cfaa, paving: 0xc4b499, sky: 0xa9c6ba },
@@ -326,6 +327,131 @@ function marketBasket(parent: T.Group, x: number, z: number, radius: number, ind
   }
 }
 
+export function decorateFloatingMarketPlayfield(parent: T.Group) {
+  for (const [i, basket] of MARKET_BASKETS.entries()) marketBasket(parent, basket.x, basket.z, basket.radius, i);
+  const bridge = (BRIDGE.deckTop + BRIDGE.deckBottom) / 2;
+  for (const bank of [BRIDGE.left, BRIDGE.right]) {
+    for (const side of [-1, 1]) {
+      const marker = block(parent, 0xf4cc75, bank + (bank > 0 ? 0.19 : -0.19), 0.016, bridge + side * 0.34, 0.13, 0.019, 0.065);
+      marker.castShadow = false;
+    }
+  }
+}
+
+export function decorateSongkran(parent: T.Group) {
+  const colors = [0xef6857, 0x6acbb2, 0xf2bf50, 0xe28bb0, 0x79aede];
+  const bunting = place(parent, 0, -3.87, 0);
+  for (const x of [-5.23, 5.23]) {
+    block(bunting, 0x9d6a47, x, 0.91, 0, 0.070, 2.23, 0.072);
+  }
+  const cordHeight = (x: number) => 1.78 + 0.015 * x * x;
+  const cord = new T.Line(new T.BufferGeometry().setFromPoints(
+    Array.from({ length: 25 }, (_, i) => {
+      const x = -5.23 + i * 10.46 / 24;
+      return new T.Vector3(x, cordHeight(x), 0);
+    })
+  ), new T.LineBasicMaterial({ color: 0xa27652 }));
+  bunting.add(cord);
+  const pennant = new T.ShapeGeometry(new T.Shape([
+    new T.Vector2(-0.13, 0), new T.Vector2(0.13, 0), new T.Vector2(0, -0.32),
+  ]));
+  for (let i = 0; i < 19; i++) {
+    const x = (i - 9) * 0.54;
+    const flag = form(bunting, pennant, colors[i % colors.length], x, cordHeight(x), 0.012, 1, 1, 1);
+    flag.castShadow = false;
+    flag.rotation.y = (i % 3 - 1) * 0.18;
+  }
+  woodSign(bunting, 'สงกรานต์', -0.10, 1.47, 0.14, 1.71, 0.39);
+
+  const drop = new T.SphereGeometry(1, 8, 6);
+  const water = new T.MeshBasicMaterial({ color: 0xa1e6f0 });
+  const jets = [[-4.79, 3.94, -0.82], [2.08, 3.90, -1], [5.92, -1.69, 0.65]].map(([x, z, direction], index) => {
+    const bowl = place(parent, x, z, -0.20);
+    form(bowl, new T.CylinderGeometry(0.31, 0.205, 0.23, 12), colors[index], 0, 0.125, 0, 1, 1, 1);
+    form(bowl, new T.CylinderGeometry(0.277, 0.277, 0.025, 12), 0x68c4d7, 0, 0.238, 0, 1, 1, 1);
+    const drops = Array.from({ length: 14 }, () => {
+      const bead = new T.Mesh(drop, water);
+      bowl.add(bead);
+      return bead;
+    });
+    return { drops, direction };
+  });
+  return (seconds: number) => {
+    for (const [index, { drops, direction }] of jets.entries()) {
+      drops.forEach((bead, i) => {
+        const t = (seconds * 0.85 + i / drops.length + index * 0.21) % 1;
+        bead.position.set(direction * 1.32 * t, 0.25 + 4.3 * t * (1 - t), t * 0.91 + Math.sin(i * 4) * 0.10);
+        const radius = 0.028 + (i % 3) * 0.007;
+        bead.scale.set(radius, radius * 1.42, radius);
+      });
+    }
+  };
+}
+
+export function decorateLoyKrathong(parent: T.Group) {
+  const litWax = new T.MeshBasicMaterial({ color: 0xffe5a2 });
+  const fire = new T.MeshBasicMaterial({ color: 0xffac53 });
+  const glow = new T.MeshBasicMaterial({ color: 0xffb86f, transparent: true, opacity: 0.24, depthWrite: false });
+  const flameShape = new T.SphereGeometry(1, 8, 6);
+  const haloShape = new T.CircleGeometry(1, 20);
+
+  const stations = place(parent, 0, -3.96, -0.19);
+  woodSign(stations, 'ลอยกระทง', -0.28, 1.33, 0.46, 1.69, 0.39);
+  for (const x of [-4.68, -2.87, 2.67, 4.52]) {
+    const lamp = place(stations, x, 0, 0);
+    block(lamp, 0x86583e, 0, 0.57, 0, 0.062, 1.16, 0.063);
+    const shade = new T.Mesh(new T.BoxGeometry(0.22, 0.25, 0.23), litWax);
+    shade.position.y = 1.15;
+    lamp.add(shade);
+    block(lamp, 0x855b40, 0, 1.30, 0, 0.31, 0.064, 0.32);
+    block(lamp, 0x855b40, 0, 0.997, 0, 0.30, 0.064, 0.31);
+  }
+
+  const coordinates: [number, number, number][] = [[-0.70, 4.16, 0.95], [0.21, 4.74, 1.16], [-0.52, 5.36, 1.13],
+    [0.82, 5.82, 0.88], [-0.87, 6.24, 0.85], [-4.74, -5.77, 1.06], [3.7, -5.64, 0.92]];
+  const ponds = alternateCourses[1].zones ?? [];
+  for (const { outline } of ponds) {
+    const [topLeft, , bottomRight] = outline;
+    for (const [x, z, size] of [[0.34, 0.25, 0.92], [0.66, 0.51, 0.83], [0.40, 0.79, 0.74]]) {
+      coordinates.push([T.MathUtils.lerp(topLeft.x, bottomRight.x, x), T.MathUtils.lerp(topLeft.z, bottomRight.z, z), size]);
+    }
+  }
+
+  const floats = coordinates.map(([x, z, size], index) => {
+    const waterline = z > 3.5 || z < -3.5 ? -0.22 : -0.007;
+    const float = place(parent, x, z, waterline);
+    float.scale.setScalar(size);
+    const petals = [0xf1a6b4, 0xf3cd72, 0xf5d4b6];
+    form(float, new T.CylinderGeometry(0.21, 0.17, 0.06, 12), 0x456c47, 0, 0.028, 0, 1, 1, 1);
+    for (let i = 0; i < 8; i++) {
+      const a = Math.PI * i / 4;
+      const petal = stone(float, petals[index % petals.length], Math.cos(a) * 0.139, 0.085,
+        Math.sin(a) * 0.139, 0.099, 0.079, 0.045);
+      petal.rotation.y = -a;
+    }
+    const candle = new T.Mesh(new T.CylinderGeometry(0.026, 0.033, 0.13, 7), litWax);
+    candle.position.y = 0.135;
+    float.add(candle);
+    const flame = new T.Mesh(flameShape, fire);
+    flame.position.y = 0.233;
+    float.add(flame);
+    const halo = new T.Mesh(haloShape, glow);
+    halo.rotation.x = -Math.PI / 2;
+    halo.position.y = 0.014;
+    halo.scale.set(0.37, 0.56, 1);
+    float.add(halo);
+    return { float, flame, x, z, waterline };
+  });
+  return (seconds: number) => {
+    for (const [i, { float, flame, x, z, waterline }] of floats.entries()) {
+      const phase = seconds * 1.3 + i * 1.75;
+      float.position.set(x + Math.sin(phase * 0.59) * 0.052, waterline + Math.cos(phase) * 0.012, z);
+      float.rotation.y = 0.12 * Math.sin(phase);
+      flame.scale.set(0.038, 0.052 + Math.sin(phase * 4) * 0.011, 0.031);
+    }
+  };
+}
+
 function thailand(parent: T.Group) {
   const canal = 0x2c837e;
   // Continue the playing canal outside the rail into the market waterfront.
@@ -422,14 +548,6 @@ function thailand(parent: T.Group) {
     lotus(parent, x, z, 0.79 + Math.abs(x % 0.25));
   }
   for (let i = 0; i < 9; i++) block(parent, 0xc79b64, -1.80 + i * 0.35, -0.17, 7.0, 0.33, 0.20, 0.93);
-  for (const [i, basket] of MARKET_BASKETS.entries()) marketBasket(parent, basket.x, basket.z, basket.radius, i);
-  const bridge = (BRIDGE.deckTop + BRIDGE.deckBottom) / 2;
-  for (const bank of [BRIDGE.left, BRIDGE.right]) {
-    for (const side of [-1, 1]) {
-      const marker = block(parent, 0xf4cc75, bank + (bank > 0 ? 0.19 : -0.19), 0.016, bridge + side * 0.34, 0.13, 0.019, 0.065);
-      marker.castShadow = false;
-    }
-  }
   return (time: number) => {
     boats.forEach((boat, i) => {
       boat.position.y = -0.24 + Math.sin(time * 1.6 + i * 2) * 0.034;

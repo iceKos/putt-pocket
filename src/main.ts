@@ -1,17 +1,14 @@
 import './style.css';
-import { COURSES, createBall, launch, moving, SHOT_LIMIT, STEP, stepPutt, BALL_RADIUS, type Point } from './golf';
+import { COURSES, createBall, launch, LAYOUT_LABELS, moving, SHOT_LIMIT, STEP, stepPutt, BALL_RADIUS, type CourseLayout, type Point } from './golf';
 import { makeScene } from './scene';
 import { makeGolfAudio } from './audio';
 import type { Burst } from './fx';
 import { makeRoomClient } from './room-client';
 import { PLAYER_COLORS, type PlayerSnapshot, type RoomSnapshot, type Seat } from './room-protocol';
-import { embedded, sessionIdFromUrl, takeLaunchToken, toPlatform } from '../docs/game-kit/naka-platform.client';
+import { embedded, toPlatform } from '../docs/game-kit/naka-platform.client';
 
 const get = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = get<HTMLCanvasElement>('course');
-const platformSession = sessionIdFromUrl();
-const launchToken = takeLaunchToken();
-const platformMatch = platformSession !== null || launchToken !== null;
 
 const playerName = (player: PlayerSnapshot) => player.profile?.username || (player.seat === 0 ? 'White' : 'Blue');
 
@@ -32,9 +29,10 @@ function setPlayerIcon(icon: HTMLElement, seat: Seat, avatar?: string) {
   icon.append(image);
 }
 
-function start(scene: ReturnType<typeof makeScene>) {
-  const game = get('game');
-  const intro = get('intro');
+export async function startGame(platformSession: string | null, launchToken: string | null, minimumLoadingTime: Promise<void>) {
+  const scene = makeScene(canvas);
+  await Promise.all([scene.prepare(), minimumLoadingTime]);
+  const platformMatch = platformSession !== null || launchToken !== null;
   const timer = get('timer');
   const score = get('score');
   const stroke = get('stroke');
@@ -53,14 +51,14 @@ function start(scene: ReturnType<typeof makeScene>) {
   const myScore = get('my-score');
   const rivalScore = get('rival-score');
   if (platformMatch) {
-    game.classList.add('platform-match');
+    get('game').classList.add('platform-match');
     get('lobby-title').textContent = 'Naka Lite match';
     get('lobby-close').textContent = 'Back to lobby';
     get('waiting-copy').textContent = 'The round starts when both players join.';
   }
   const audio = makeGolfAudio(get<HTMLButtonElement>('sound-toggle'));
   for (const gesture of ['click', 'pointerdown', 'touchstart', 'pointerup', 'keydown']) {
-    game.addEventListener(gesture, audio.unlock, { capture: true, passive: true });
+    get('game').addEventListener(gesture, audio.unlock, { capture: true, passive: true });
   }
 
   let ball = createBall();
@@ -72,11 +70,12 @@ function start(scene: ReturnType<typeof makeScene>) {
   let drag: { pointerId: number; origin: Point } | null = null;
 
   const picker = get<HTMLSelectElement>('practice-hole');
-  picker.replaceChildren(...COURSES.map((course, index) => new Option(`Practice ${index + 1}`, String(index))));
+  picker.replaceChildren(...COURSES.flatMap((_, index) => LAYOUT_LABELS.map((letter, layout) =>
+    new Option(`Practice ${index + 1}${letter}`, String(index + layout * COURSES.length)))));
   get('hole-count').textContent = String(COURSES.length);
-  get('intro-hole-count').textContent = String(COURSES.length);
   const turnover = get('turnover');
   let hole = 0;
+  let layout: CourseLayout = 0;
   let lie: Point = { ...ball };
   let noticeUntil = 0;
   let waterDrops = 0;
@@ -90,7 +89,7 @@ function start(scene: ReturnType<typeof makeScene>) {
   let accumulator = 0;
   let displayedBall: Point = { ...ball };
   let displayedRival: Point | null = null;
-  const ready = () => intro.hidden && !lobby.open && !connecting && !finished && !ball.sunk && !moving(ball)
+  const ready = () => !lobby.open && !connecting && !finished && !ball.sunk && !moving(ball)
     && (!room || (connected && room.phase === 'playing' && performance.now() >= pendingShotUntil
       && room.players.find((p) => p.seat === seat)?.score === null));
 
@@ -108,21 +107,13 @@ function start(scene: ReturnType<typeof makeScene>) {
     }
   }
 
-  function setIntro(visible: boolean) {
-    intro.hidden = !visible;
-    canvas.inert = visible;
-    game.classList.toggle('intro-open', visible);
-    get('lobby-close').textContent = visible ? 'Back to menu' : 'Back to practice';
-    scene.setIntroView(visible);
-  }
-
   function cue(kind: Burst, point: Point, player: Seat) {
     scene.emit(kind, point, player);
     audio.play(kind, player === seat);
   }
 
   const total = (scores: number[]) => scores.reduce((sum, score) => sum + score, 0);
-  const hint = () => [
+  const hint = () => layout === 1 ? COURSES[hole].layouts[1].hint : [
     'Pull back from the ball and release to sling it.',
     'Line up the narrow bridge and dodge the fruit baskets. A splash costs one stroke.',
     'Sand slows the ball. Aim between the columns or take the grassy way around.',
@@ -135,11 +126,13 @@ function start(scene: ReturnType<typeof makeScene>) {
     'Watch the wind ribbons. Use the lane behind the rocks to stay sheltered.',
   ][hole];
 
-  function selectHole(next: number) {
+  function selectHole(next: number, nextLayout: CourseLayout) {
     hole = next;
-    scene.setHole(hole);
+    layout = nextLayout;
+    scene.setHole(hole, layout);
     get('hole-number').textContent = String(hole + 1);
-    get('course-name').textContent = COURSES[hole].name;
+    get('hole-layout').textContent = `· ${LAYOUT_LABELS[layout]}`;
+    get('course-name').textContent = COURSES[hole].layouts[layout].name;
     const country = get('course-country');
     if (hole === 1) {
       const thai = document.createElement('span');
@@ -155,8 +148,9 @@ function start(scene: ReturnType<typeof makeScene>) {
   }
 
   function resetPractice() {
-    selectHole(Number(picker.value));
-    ball = createBall(hole);
+    const selection = Number(picker.value);
+    selectHole(selection % COURSES.length, selection < COURSES.length ? 0 : 1);
+    ball = createBall(hole, layout);
     lie = { ...ball };
     displayedBall = { ...ball };
     strokes = 0;
@@ -171,7 +165,7 @@ function start(scene: ReturnType<typeof makeScene>) {
     instructions.textContent = hint();
     instructions.hidden = false;
     replay.textContent = 'Play again';
-    get('result-context').textContent = `Hole ${hole + 1} · ${COURSES[hole].name}`;
+    get('result-context').textContent = `Hole ${hole + 1}${LAYOUT_LABELS[layout]} · ${COURSES[hole].layouts[layout].name}`;
   }
 
   function returnToPractice() {
@@ -191,8 +185,7 @@ function start(scene: ReturnType<typeof makeScene>) {
     updateRoomUI();
     lobbyStatus.textContent = '';
     if (lobby.open) lobby.close();
-    if (intro.hidden) canvas.focus({ preventScroll: true });
-    else get('intro-friend').focus({ preventScroll: true });
+    canvas.focus({ preventScroll: true });
   }
 
   function updateRoomUI() {
@@ -269,9 +262,10 @@ function start(scene: ReturnType<typeof makeScene>) {
       const me = state.players.find((p) => p.seat === nextSeat);
       if (!me) return;
       if (!previous) resetPractice();
-      const newHole = !previous || state.hole !== previous.hole;
+      const nextLayout = state.layouts?.[state.hole] ?? 0;
+      const newHole = !previous || state.hole !== previous.hole || layout !== nextLayout;
       if (newHole) {
-        selectHole(state.hole);
+        selectHole(state.hole, nextLayout);
         pendingShotUntil = 0;
       }
       if (newHole || !wasConnected || me.waterDrops !== waterDrops) {
@@ -305,7 +299,6 @@ function start(scene: ReturnType<typeof makeScene>) {
         lobbyStatus.textContent = !platformMatch && state.players.length === 2 ? 'Waiting for your friend to reconnect…' : '';
         showLobby();
       } else {
-        if (!intro.hidden) setIntro(false);
         if (lobby.open) {
           lobby.close();
           canvas.focus({ preventScroll: true });
@@ -313,7 +306,9 @@ function start(scene: ReturnType<typeof makeScene>) {
         const rival = state.players.find((p) => p.seat !== seat);
         turnover.hidden = state.phase !== 'between';
         if (state.phase === 'between') {
-          get('turnover-title').textContent = `Next: ${COURSES[hole + 1].name}`;
+          const next = hole + 1;
+          const nextLayout = state.layouts?.[next] ?? 0;
+          get('turnover-title').textContent = `Next: ${COURSES[next].layouts[nextLayout].name} · ${LAYOUT_LABELS[nextLayout]}`;
           get('turnover-scores').textContent = state.players.map((p) =>
             `${playerName(p)} ${p.score} this hole · ${total(p.scores)} total`).join('  /  ');
         }
@@ -351,12 +346,6 @@ function start(scene: ReturnType<typeof makeScene>) {
     },
   });
 
-  get('intro-practice').addEventListener('click', () => {
-    setIntro(false);
-    resetPractice();
-    canvas.focus({ preventScroll: true });
-  });
-  get('intro-friend').addEventListener('click', showLobby);
   picker.addEventListener('change', () => {
     if (room) return;
     resetPractice();
@@ -488,18 +477,6 @@ function start(scene: ReturnType<typeof makeScene>) {
     }
   });
   resetPractice();
-  if (platformMatch) {
-    if (platformSession && launchToken) client.open({ type: 'join-naka', sessionId: platformSession, token: launchToken });
-    else if (!platformSession || !client.resume()) {
-      updateRoomUI();
-      lobbyStatus.textContent = 'Open the match again from the Naka Lite lobby.';
-      showLobby();
-    }
-    toPlatform({ type: 'ready' });
-  } else if (!client.resume()) setIntro(true);
-
-  const observer = new ResizeObserver(() => scene.resize());
-  observer.observe(canvas);
   let last = performance.now();
   function frame(now: number) {
     practiceStartedAt ??= now;
@@ -522,7 +499,7 @@ function start(scene: ReturnType<typeof makeScene>) {
         const priorImpacts = ball.impacts ?? 0;
         accumulator += Math.min((now - last) / 1000, 0.1);
         while (accumulator >= STEP) {
-          const splash = moving(ball) ? stepPutt(ball, hole, Math.max(0, elapsed - accumulator), lie) : null;
+          const splash = moving(ball) ? stepPutt(ball, hole, Math.max(0, elapsed - accumulator), lie, layout) : null;
           if (splash) {
             cue('splash', splash, seat);
             strokes++;
@@ -568,12 +545,17 @@ function start(scene: ReturnType<typeof makeScene>) {
       aim, ready(), seat, rival && displayedRival ? { ...displayedRival, sunk: rival.ball.sunk } : undefined, elapsed);
     requestAnimationFrame(frame);
   }
-  requestAnimationFrame(frame);
-}
+  frame(last);
+  const observer = new ResizeObserver(() => scene.resize());
+  observer.observe(canvas);
 
-try {
-  start(makeScene(canvas));
-} catch (error) {
-  console.error(error);
-  get('game-error').hidden = false;
+  if (platformMatch) {
+    if (platformSession && launchToken) client.open({ type: 'join-naka', sessionId: platformSession, token: launchToken });
+    else if (!platformSession || !client.resume()) {
+      updateRoomUI();
+      lobbyStatus.textContent = 'Open the match again from the Naka Lite lobby.';
+      showLobby();
+    }
+    toPlatform({ type: 'ready' });
+  } else client.resume();
 }

@@ -2,7 +2,7 @@ import { randomBytes, randomInt } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { createNakaPlatform, NakaPlatformError, type RosterPlayer } from '../docs/game-kit/naka-platform.ts';
-import { COURSES, createBall, launch, moving, SHOT_LIMIT, STEP, stepPutt, TURNOVER_SECONDS, type Point } from '../src/golf.ts';
+import { COURSES, createBall, launch, moving, SHOT_LIMIT, STEP, stepPutt, TURNOVER_SECONDS, type CourseLayout, type Point } from '../src/golf.ts';
 import type { PlayerProfile, PlayerSnapshot, RoomMessage, RoomSnapshot, Seat } from '../src/room-protocol.ts';
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -28,6 +28,7 @@ type Room = {
   deadline: number;
   expires: number;
   hole: number;
+  layouts: readonly CourseLayout[];
   startedAt: number;
   elapsedMs: number;
 };
@@ -49,7 +50,7 @@ function snapshot(room: Room, now = performance.now()): RoomSnapshot {
     ball: p.ball, connected: p.socket?.readyState === WebSocket.OPEN,
   }));
   return {
-    code: room.code, phase: room.phase, players, hole: room.hole, elapsedMs: room.elapsedMs,
+    code: room.code, phase: room.phase, players, hole: room.hole, layouts: room.layouts, elapsedMs: room.elapsedMs,
     remainingMs: room.phase === 'waiting' ? COURSES[room.hole].seconds * 1000 : Math.max(0, room.deadline - now),
   };
 }
@@ -102,6 +103,10 @@ export function attachRooms() {
       const previous = player.socket;
       player.socket = socket;
       membership = { room, player };
+      if (room.phase === 'waiting') {
+        player.ball = createBall(room.hole, room.layouts[room.hole]);
+        player.lie = { ...player.ball };
+      }
       if (room.phase === 'waiting' && room.players.length === 2
         && room.players.every((p) => p.socket?.readyState === WebSocket.OPEN)) {
         beginHole(room, performance.now());
@@ -259,7 +264,7 @@ export function attachRooms() {
         }
         for (let i = 0; i < steps && moving(player.ball); i++) {
           const elapsed = Math.max(0, room.elapsedMs / 1000 - (steps - 1 - i) * STEP);
-          const splash = stepPutt(player.ball, room.hole, elapsed, player.lie);
+          const splash = stepPutt(player.ball, room.hole, elapsed, player.lie, room.layouts[room.hole]);
           if (splash) {
             player.splash = splash;
             player.waterDrops++;
@@ -301,7 +306,12 @@ export function attachRooms() {
 }
 
 function makeRoom(code: string, players: Player[], now: number): Room {
-  return { code, players, phase: 'waiting', deadline: 0, expires: now + ROOM_TTL, hole: 0, startedAt: 0, elapsedMs: 0 };
+  const layouts = COURSES.map<CourseLayout>((_, index) => index < Math.ceil(COURSES.length / 2) ? 0 : 1);
+  for (let index = layouts.length - 1; index > 0; index--) {
+    const other = randomInt(index + 1);
+    [layouts[index], layouts[other]] = [layouts[other], layouts[index]];
+  }
+  return { code, players, layouts, phase: 'waiting', deadline: 0, expires: now + ROOM_TTL, hole: 0, startedAt: 0, elapsedMs: 0 };
 }
 
 function playerProfile(player: RosterPlayer): PlayerProfile {
@@ -326,7 +336,7 @@ function beginHole(room: Room, now: number) {
   room.deadline = now + COURSES[room.hole].seconds * 1000;
   room.expires = room.deadline + ROOM_TTL;
   for (const player of room.players) {
-    player.ball = createBall(room.hole);
+    player.ball = createBall(room.hole, room.layouts[room.hole]);
     player.lie = { ...player.ball };
     player.strokes = 0;
     player.waterDrops = 0;

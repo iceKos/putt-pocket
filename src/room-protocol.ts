@@ -1,4 +1,4 @@
-import type { Ball, Point } from './golf';
+import type { Ball, CourseLayout, Point } from './golf';
 
 export const PLAYER_COLORS = ['#fff8dc', '#3abef2'] as const;
 export type Seat = 0 | 1;
@@ -20,6 +20,7 @@ export type RoomSnapshot = {
   code: string;
   phase: 'waiting' | 'playing' | 'between' | 'finished';
   hole: number;
+  layouts: readonly CourseLayout[];
   elapsedMs: number;
   remainingMs: number;
   players: PlayerSnapshot[];

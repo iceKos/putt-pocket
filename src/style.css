@@ -68,7 +68,6 @@ h1::after {
 button { border: 0; border-radius: 100px; padding: 11px 22px; margin-top: 22px; background: var(--cyan); color: #132424; cursor: pointer; }
 button:hover { background: #91fff2; }
 :focus-visible { outline: 3px solid white; outline-offset: 3px; }
-#game-error { position: absolute; inset: 36% 12% auto; text-align: center; background: var(--ink); padding: 24px; border-radius: 15px; }
 @media (max-width: 600px) {
   .hud { grid-template-columns: 1fr auto auto; }
   .pill { padding-inline: 11px; }
@@ -167,60 +166,3 @@ button:hover { background: #91fff2; }
 .sound-toggle svg { width: 21px; height: 21px; }
 .sound-toggle .sound-cross, .sound-toggle[aria-pressed="true"] .sound-waves { display: none; }
 .sound-toggle[aria-pressed="true"] .sound-cross { display: initial; }
-
-.intro {
-  position: absolute; z-index: 3; inset: 0; overflow: auto;
-  background: linear-gradient(90deg, #182c24 0%, #182c24f5 24%, #182c2499 43%, #182c2408 70%);
-}
-.intro-open :is(.hud, .course-info, .room-tools, .controls, .sound-toggle) { visibility: hidden; }
-.intro-panel {
-  display: grid; align-content: center; justify-items: start; gap: clamp(26px, 5vh, 56px);
-  min-height: 100%; padding: 32px max(env(safe-area-inset-left), clamp(34px, 7vw, 126px));
-}
-.intro-heading { width: fit-content; }
-.intro-tour {
-  margin: 0 0 21px; color: #d2e2c8; font-size: 13px;
-  font-weight: 800; letter-spacing: .14em; text-transform: uppercase;
-}
-.intro-title {
-  width: fit-content; font-size: clamp(78px, 8.1vw, 142px);
-  line-height: .83; letter-spacing: -.087em; text-transform: uppercase;
-  transform: rotate(-4deg); text-shadow: 0 .055em 0 #0d221b, 0 .085em .21em #0d221b70;
-}
-.intro-title span { display: block; }
-.intro-title::after { inset: auto -1% -.14em 3%; height: .15em; border-width: .035em; }
-.intro-actions { display: grid; width: min(100%, 305px); gap: 9px; }
-.intro-actions p { margin: 0 0 7px; color: #e0eadb; font-size: 14px; font-weight: 650; }
-.intro-actions button {
-  margin: 0; min-height: 48px; border-radius: 15px; padding: 10px 17px;
-}
-#intro-practice {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  background: var(--yellow); color: #182c24;
-}
-#intro-practice:hover { background: #ffe07a; }
-#intro-practice span { font-size: 21px; line-height: 1; }
-#intro-friend { border: 1px solid #fffdf04d; background: #172c24a6; }
-#intro-friend:hover { background: #293f34; }
-
-@media (max-width: 799px), (max-aspect-ratio: 1199/1000) {
-  .intro {
-    background: linear-gradient(180deg, #182c24f5 0%, #182c2488 24%, #182c2400 44%,
-      #182c2400 64%, #182c24b0 81%, #182c24 100%);
-  }
-  .intro-panel {
-    align-content: space-between; justify-items: center; gap: 24px;
-    padding: max(env(safe-area-inset-top), clamp(23px, 5dvh, 54px)) 18px
-      max(env(safe-area-inset-bottom), clamp(18px, 4dvh, 44px));
-  }
-  .intro-heading { text-align: center; }
-  .intro-tour { margin-bottom: 13px; }
-  .intro-title { font-size: clamp(51px, 14vw, 94px); }
-  .intro-title::after { inset-inline: 2%; }
-  .intro-actions p { text-align: center; }
-}
-@media (max-height: 460px) {
-  .intro-panel { gap: 19px; padding-block: 16px; }
-  .intro-tour { margin-bottom: 12px; }
-  .intro-title { font-size: clamp(46px, 14dvh, 77px); }
-}

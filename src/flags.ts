@@ -21,22 +21,23 @@ for (let i = 0; i < vertices.count; i++) {
 }
 cloth.computeVertexNormals();
 
-export function flyCountryFlag(group: T.Group, country: keyof typeof images, cup: Point) {
+export async function flyCountryFlag(group: T.Group, country: keyof typeof images, cup: Point) {
   const flag = new T.Mesh(cloth, new T.MeshBasicMaterial({ side: T.DoubleSide, toneMapped: false }));
   flag.rotation.y = -0.17;
   flag.visible = false;
   group.add(flag);
-  loader.load(images[country], (texture) => {
-    texture.colorSpace = T.SRGBColorSpace;
-    const image = texture.image as HTMLImageElement;
-    const ratio = image.naturalWidth / image.naturalHeight;
-    const width = Math.min(0.99, 0.60 * ratio);
-    const height = width / ratio;
-    flag.material.map = texture;
-    flag.material.needsUpdate = true;
-    flag.scale.set(width, height, 1);
-    flag.position.set(cup.x + Math.cos(flag.rotation.y) * width / 2, 1.345 - height / 2,
-      cup.z - Math.sin(flag.rotation.y) * width / 2);
-    flag.visible = true;
-  });
+  const texture = await loader.loadAsync(images[country]);
+  texture.colorSpace = T.SRGBColorSpace;
+  const image = texture.image as HTMLImageElement;
+  await image.decode();
+  const ratio = image.naturalWidth / image.naturalHeight;
+  const width = Math.min(0.99, 0.60 * ratio);
+  const height = width / ratio;
+  flag.material.map = texture;
+  flag.material.needsUpdate = true;
+  flag.scale.set(width, height, 1);
+  flag.position.set(cup.x + Math.cos(flag.rotation.y) * width / 2, 1.345 - height / 2,
+    cup.z - Math.sin(flag.rotation.y) * width / 2);
+  flag.visible = true;
+  return texture;
 }

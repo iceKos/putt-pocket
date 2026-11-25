@@ -3,17 +3,63 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#829e72">
+  <meta name="theme-color" content="#182c24">
   <link rel="icon" href="data:,">
   <title>Putt Pocket</title>
+  <style>
+    html, body { margin: 0; overflow: hidden; background: #182c24; }
+    #game[inert] { visibility: hidden; }
+    #boot {
+      position: fixed; inset: 0; z-index: 10; display: grid; place-items: center;
+      padding: 24px; text-align: center; color: #fffdf0;
+      font-family: ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
+      background: radial-gradient(ellipse at 50% 42%, #314d3c, #182c24 67%);
+    }
+    #boot [hidden] { display: none; }
+    #boot:has(.boot-no-script) :is(#boot-status, #boot-activity) { display: none; }
+    #boot .boot-title {
+      position: relative; width: fit-content; margin: 0 auto 29px;
+      font-size: clamp(42px, 10vw, 94px); font-weight: 1000; line-height: .9;
+      letter-spacing: -.075em; transform: rotate(-4deg); text-shadow: 0 .055em #0d221b;
+    }
+    #boot .boot-title span { display: block; color: #ffce42; }
+    #boot .boot-title::after {
+      content: ""; position: absolute; inset: auto 1% -.13em;
+      height: .13em; border: solid #43e6db; border-width: 0 0 .033em; border-radius: 50%;
+    }
+    #boot-status { margin: 0; font-size: 14px; font-weight: 650; }
+    #boot-activity { display: flex; justify-content: center; gap: 7px; margin: 12px 0 0; }
+    #boot-activity span {
+      width: 7px; height: 7px; border-radius: 50%; background: #43e6db;
+      animation: boot-pulse 1.2s ease-in-out infinite alternate;
+    }
+    #boot-activity span:nth-child(2) { animation-delay: .18s; }
+    #boot-activity span:nth-child(3) { animation-delay: .36s; }
+    #boot-retry {
+      margin: 17px 0 0; border: 0; border-radius: 100px; padding: 11px 20px;
+      background: #ffce42; color: #182c24; font: inherit; font-weight: 750; cursor: pointer;
+    }
+    #boot-retry:focus-visible { outline: 3px solid white; outline-offset: 3px; }
+    @keyframes boot-pulse { from { opacity: .35; } to { opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) { #boot-activity span { animation: none; } }
+  </style>
 </head>
 <body>
-  <main id="game">
+  <div id="boot">
+    <div>
+      <p class="boot-title" aria-label="Putt Pocket">PUTT <span>POCKET</span></p>
+      <p id="boot-status" role="status">Loading the course…</p>
+      <div id="boot-activity" aria-hidden="true"><span></span><span></span><span></span></div>
+      <button id="boot-retry" type="button" hidden>Try again</button>
+      <noscript><p class="boot-no-script">Enable JavaScript to play.</p></noscript>
+    </div>
+  </div>
+  <main id="game" inert>
     <canvas id="course" tabindex="0" aria-label="Mini golf course" aria-describedby="instructions"></canvas>
     <header class="hud">
       <div class="pill identity">
         <h1>PUTT <span>POCKET</span></h1>
-        <span class="hole">HOLE <b id="hole-number">1</b> / <span id="hole-count">10</span></span>
+        <span class="hole">HOLE <b id="hole-number">1</b> / <span id="hole-count">10</span> <span id="hole-layout">· A</span></span>
       </div>
       <div id="timer" class="pill timer" aria-label="Time remaining">0:52</div>
       <div class="scores">
@@ -27,7 +73,7 @@
       <span id="running-total" class="pill" hidden></span>
     </section>
     <div class="room-tools">
-      <select id="practice-hole" aria-label="Practice hole"></select>
+      <select id="practice-hole" aria-label="Practice hole and layout"></select>
       <span id="live-code" class="pill" hidden></span>
       <button id="room-button" type="button">Play with a friend</button>
     </div>
@@ -64,19 +110,6 @@
         <div id="power" role="meter" aria-label="Shot power" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
       </div>
     </footer>
-    <section id="intro" class="intro" aria-labelledby="intro-title" hidden>
-      <div class="intro-panel">
-        <div class="intro-heading">
-          <p class="intro-tour"><span id="intro-hole-count">10</span>-hole mini golf</p>
-          <h1 id="intro-title" class="intro-title">Putt <span>Pocket</span></h1>
-        </div>
-        <div class="intro-actions">
-          <p>Pull back on the ball and release to putt.</p>
-          <button id="intro-practice" type="button">Start practice <span aria-hidden="true">→</span></button>
-          <button id="intro-friend" class="secondary" type="button">Play with a friend</button>
-        </div>
-      </div>
-    </section>
     <section id="turnover" class="result turnover" hidden aria-labelledby="turnover-title">
       <div class="result-card">
         <h2 id="turnover-title"></h2>
@@ -93,8 +126,7 @@
         <button id="replay" type="button">Play again</button>
       </div>
     </section>
-    <p id="game-error" hidden>This browser could not start the 3D course. Try a browser with WebGL enabled.</p>
   </main>
-  <script type="module" src="/src/main.ts"></script>
+  <script type="module" src="/src/boot.ts"></script>
 </body>
 </html>
