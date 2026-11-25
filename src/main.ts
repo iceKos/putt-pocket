@@ -4,13 +4,13 @@ import { makeScene } from './scene';
 import { makeGolfAudio } from './audio';
 import type { Burst } from './fx';
 import { makeRoomClient } from './room-client';
-import { PLAYER_COLORS, type PlayerSnapshot, type RoomSnapshot, type Seat } from './room-protocol';
+import { MIN_PLAYERS, PLAYER_COLORS, PLAYER_NAMES, rankPlayers, ROOM_SIZES, SEATS, type PlayerSnapshot, type RoomSnapshot, type Seat } from './room-protocol';
 import { embedded, toPlatform } from '../docs/game-kit/naka-platform.client';
 
 const get = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = get<HTMLCanvasElement>('course');
 
-const playerName = (player: PlayerSnapshot) => player.profile?.username || (player.seat === 0 ? 'White' : 'Blue');
+const playerName = (player: PlayerSnapshot) => player.profile?.username || PLAYER_NAMES[player.seat];
 
 function setPlayerIcon(icon: HTMLElement, seat: Seat, avatar?: string) {
   icon.style.backgroundColor = PLAYER_COLORS[seat];
@@ -49,12 +49,20 @@ export async function startGame(platformSession: string | null, launchToken: str
   const waitingRoom = get('waiting-room');
   const standings = get('standings');
   const myScore = get('my-score');
-  const rivalScore = get('rival-score');
+  const scores = get('scores');
+  const template = get<HTMLTemplateElement>('opponent-score');
+  const opponentChips = SEATS.slice(1).map(() => {
+    const chip = template.content.firstElementChild!.cloneNode(true) as HTMLElement;
+    scores.append(chip);
+    return chip;
+  });
+  const capacityPicker = get<HTMLSelectElement>('room-capacity');
+  capacityPicker.replaceChildren(...ROOM_SIZES.map((size) => new Option(String(size))));
   if (platformMatch) {
     get('game').classList.add('platform-match');
     get('lobby-title').textContent = 'Naka Lite match';
     get('lobby-close').textContent = 'Back to lobby';
-    get('waiting-copy').textContent = 'The round starts when both players join.';
+    get('waiting-copy').textContent = 'The round starts when everyone joins.';
   }
   const audio = makeGolfAudio(get<HTMLButtonElement>('sound-toggle'));
   for (const gesture of ['click', 'pointerdown', 'touchstart', 'pointerup', 'keydown']) {
@@ -88,7 +96,7 @@ export async function startGame(platformSession: string | null, launchToken: str
   let pendingShotUntil = 0;
   let accumulator = 0;
   let displayedBall: Point = { ...ball };
-  let displayedRival: Point | null = null;
+  const displayedOpponents = new Map<Seat, Point & { seat: Seat }>();
   const ready = () => !lobby.open && !connecting && !finished && !ball.sunk && !moving(ball)
     && (!room || (connected && room.phase === 'playing' && performance.now() >= pendingShotUntil
       && room.players.find((p) => p.seat === seat)?.score === null));
@@ -143,7 +151,7 @@ export async function startGame(platformSession: string | null, launchToken: str
     waterDrops = 0;
     noticeUntil = 0;
     sinkTime = null;
-    displayedRival = null;
+    displayedOpponents.clear();
     cancelAim();
   }
 
@@ -191,34 +199,41 @@ export async function startGame(platformSession: string | null, launchToken: str
   function updateRoomUI() {
     const waiting = room?.phase === 'waiting';
     const me = room?.players.find((p) => p.seat === seat);
-    const rival = room?.players.find((p) => p.seat !== seat);
+    const opponents = room?.players.filter((player) => player.seat !== seat) ?? [];
+    const grouped = (room?.capacity ?? MIN_PLAYERS) > MIN_PLAYERS;
+    get('game').classList.toggle('group-match', grouped);
     get('lobby-actions').hidden = platformMatch || Boolean(room) || connecting;
     waitingRoom.hidden = !waiting;
     get('invite-code').textContent = waiting && !platformMatch ? room?.code ?? '' : '';
     roomButton.textContent = platformMatch ? 'Back to lobby' : room ? 'Leave room' : 'Play with a friend';
     picker.hidden = platformMatch || Boolean(room) || connecting;
     const running = get('running-total');
-    running.hidden = !room?.players[0]?.scores.length;
+    running.hidden = grouped || !room?.players[0]?.scores.length;
     const runningText = room?.players.map((player) => `${playerName(player)} ${total(player.scores)}`).join('  ·  ') ?? '';
     if (running.textContent !== runningText) running.textContent = runningText;
     liveCode.hidden = platformMatch || !room;
     liveCode.textContent = liveCode.hidden ? '' : `Room ${room?.code}`;
     updatePlayerScore(myScore, seat, me);
-    rivalScore.hidden = !rival;
-    if (rival) {
-      const value = String(rival.score ?? rival.strokes);
-      const text = get('rival-strokes');
+    opponentChips.forEach((chip, index) => {
+      const player = opponents[index];
+      chip.hidden = !player;
+      if (!player) return;
+      const text = chip.querySelector<HTMLElement>('.score-value')!;
+      const value = String(player.score ?? player.strokes);
       if (text.textContent !== value) text.textContent = value;
-      updatePlayerScore(rivalScore, rival.seat, rival);
-    }
+      updatePlayerScore(chip, player.seat, player);
+    });
   }
 
   function updatePlayerScore(chip: HTMLElement, color: Seat, player?: PlayerSnapshot) {
     const name = chip.querySelector<HTMLElement>('.player-name')!;
-    const label = platformMatch && player ? playerName(player) : '';
+    const label = player ? playerName(player) : '';
+    chip.classList.toggle('offline', Boolean(player && !player.connected));
+    if (player) chip.title = `${label} · ${total(player.scores)} total strokes`;
+    else chip.removeAttribute('title');
     if (name.textContent !== label) name.textContent = label;
-    name.hidden = !label;
-    const scoreLabel = label ? `${label}'s strokes` : chip === myScore ? 'Your strokes' : 'Opponent strokes';
+    name.hidden = !label || (!platformMatch && (room?.capacity ?? MIN_PLAYERS) === MIN_PLAYERS);
+    const scoreLabel = chip === myScore ? 'Your strokes' : `${label}'s strokes`;
     if (chip.getAttribute('aria-label') !== scoreLabel) chip.setAttribute('aria-label', scoreLabel);
     setPlayerIcon(chip.querySelector<HTMLElement>('.player-icon')!, color, player?.profile?.avatar);
   }
@@ -227,12 +242,13 @@ export async function startGame(platformSession: string | null, launchToken: str
     if (finished) return;
     finished = true;
     cancelAim();
-    const ranked = [...state.players].sort((a, b) => total(a.scores) - total(b.scores));
-    const tied = total(ranked[0].scores) === total(ranked[1].scores);
+    const ranked = rankPlayers(state.players);
+    const leaders = ranked.filter(({ rank }) => rank === 1);
+    const isLeader = leaders.some(({ player }) => player.seat === seat);
     get('result-context').textContent = `${COURSES.length} holes · Final score`;
-    get('result-title').textContent = tied ? 'Tie game!' : ranked[0].seat === seat ? 'You win!' : 'Round complete';
+    get('result-title').textContent = !isLeader ? 'Round complete' : leaders.length > 1 ? 'Tie game!' : 'You win!';
     get('result-score').textContent = 'Fewest total strokes wins';
-    standings.replaceChildren(...ranked.map((player, index) => {
+    standings.replaceChildren(...ranked.map(({ player, rank, score }) => {
       const row = document.createElement('li');
       row.style.color = PLAYER_COLORS[player.seat];
       const heading = document.createElement('div');
@@ -242,7 +258,7 @@ export async function startGame(platformSession: string | null, launchToken: str
       icon.setAttribute('aria-hidden', 'true');
       setPlayerIcon(icon, player.seat, player.profile?.avatar);
       const label = document.createElement('span');
-      label.textContent = `${tied ? 1 : index + 1}. ${playerName(player)}${player.seat === seat ? ' (you)' : ''} · ${total(player.scores)} strokes`;
+      label.textContent = `${rank}. ${playerName(player)}${player.seat === seat ? ' (you)' : ''} · ${score} strokes${player.forfeited ? ' · Left match' : ''}`;
       heading.append(icon, label);
       const detail = document.createElement('small');
       detail.textContent = 'By hole: ' + player.scores.join(' + ');
@@ -253,6 +269,7 @@ export async function startGame(platformSession: string | null, launchToken: str
     replay.textContent = platformMatch ? 'Back to lobby' : 'Back to practice';
     result.hidden = false;
     replay.focus();
+    if (platformMatch) toPlatform({ type: 'ended', ...(leaders.length === 1 ? { won: isLeader } : {}) });
   }
 
   const client = makeRoomClient(platformSession, {
@@ -270,7 +287,7 @@ export async function startGame(platformSession: string | null, launchToken: str
       }
       if (newHole || !wasConnected || me.waterDrops !== waterDrops) {
         displayedBall = { ...me.ball };
-        displayedRival = null;
+        displayedOpponents.clear();
       }
       if (me.strokes !== strokes) pendingShotUntil = 0;
       if (previous && !newHole && wasConnected) {
@@ -296,14 +313,16 @@ export async function startGame(platformSession: string | null, launchToken: str
       else sinkTime ??= receivedAt;
       updateRoomUI();
       if (state.phase === 'waiting') {
-        lobbyStatus.textContent = !platformMatch && state.players.length === 2 ? 'Waiting for your friend to reconnect…' : '';
+        const online = state.players.filter((player) => player.connected).length;
+        const progress = `${online} / ${state.capacity ?? MIN_PLAYERS} players connected`;
+        if (lobbyStatus.textContent !== progress) lobbyStatus.textContent = progress;
         showLobby();
       } else {
         if (lobby.open) {
           lobby.close();
           canvas.focus({ preventScroll: true });
         }
-        const rival = state.players.find((p) => p.seat !== seat);
+        const offline = state.players.filter((player) => !player.connected && player.score === null).length;
         turnover.hidden = state.phase !== 'between';
         if (state.phase === 'between') {
           const next = hole + 1;
@@ -314,8 +333,8 @@ export async function startGame(platformSession: string | null, launchToken: str
         }
         const notice = state.phase !== 'playing' ? ''
           : receivedAt < noticeUntil ? 'Splash! +1 stroke.'
-          : !rival?.connected ? 'Your friend is offline. They can rejoin unless they left the room.'
-          : me.score !== null ? 'Waiting for your friend to finish…'
+          : offline ? `${offline} ${offline === 1 ? 'player is' : 'players are'} reconnecting…`
+          : me.score !== null ? 'Waiting for the other players to finish…'
           : strokes === 0 ? hint() : '';
         if (instructions.textContent !== notice) instructions.textContent = notice;
         instructions.hidden = !notice;
@@ -355,7 +374,7 @@ export async function startGame(platformSession: string | null, launchToken: str
     if (platformMatch || room) returnToPractice();
     else showLobby();
   });
-  createRoom.addEventListener('click', () => client.open({ type: 'create' }));
+  createRoom.addEventListener('click', () => client.open({ type: 'create', capacity: Number(capacityPicker.value) }));
   joinForm.addEventListener('submit', (event) => {
     event.preventDefault();
     client.open({ type: 'join', code: get<HTMLInputElement>('room-code').value.trim().toUpperCase() });
@@ -528,7 +547,6 @@ export async function startGame(platformSession: string | null, launchToken: str
     const blend = 1 - Math.exp(-(now - last) / 33);
     last = now;
     hud(seconds);
-    const rival = room?.players.find((p) => p.seat !== seat);
     if (room && moving(ball)) {
       displayedBall.x += (ball.x - displayedBall.x) * blend;
       displayedBall.z += (ball.z - displayedBall.z) * blend;
@@ -536,13 +554,27 @@ export async function startGame(platformSession: string | null, launchToken: str
       displayedBall.x = ball.x;
       displayedBall.z = ball.z;
     }
-    if (rival) {
-      displayedRival ??= { x: rival.ball.x, z: rival.ball.z };
-      displayedRival.x += (rival.ball.x - displayedRival.x) * blend;
-      displayedRival.z += (rival.ball.z - displayedRival.z) * blend;
+    const opponents = [];
+    for (const player of room?.players ?? []) {
+      if (player.seat === seat || !player.connected || player.ball.sunk) {
+        displayedOpponents.delete(player.seat);
+        continue;
+      }
+      let display = displayedOpponents.get(player.seat);
+      if (!display) {
+        display = { x: player.ball.x, z: player.ball.z, seat: player.seat };
+        displayedOpponents.set(player.seat, display);
+      } else if (moving(player.ball)) {
+        display.x += (player.ball.x - display.x) * blend;
+        display.z += (player.ball.z - display.z) * blend;
+      } else {
+        display.x = player.ball.x;
+        display.z = player.ball.z;
+      }
+      opponents.push(display);
     }
     scene.render(displayedBall, sinkTime === null ? BALL_RADIUS : BALL_RADIUS - Math.min(1, (now - sinkTime) / 260) * 0.39,
-      aim, ready(), seat, rival && displayedRival ? { ...displayedRival, sunk: rival.ball.sunk } : undefined, elapsed);
+      aim, ready(), seat, opponents, elapsed);
     requestAnimationFrame(frame);
   }
   frame(last);

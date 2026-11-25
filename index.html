@@ -62,10 +62,10 @@
         <span class="hole">HOLE <b id="hole-number">1</b> / <span id="hole-count">10</span> <span id="hole-layout">· A</span></span>
       </div>
       <div id="timer" class="pill timer" aria-label="Time remaining">0:52</div>
-      <div class="scores">
+      <div class="scores" id="scores">
         <div class="pill score" id="my-score" aria-label="Your strokes"><i class="player-icon" aria-hidden="true"></i><span class="player-name" hidden></span><span id="score">0</span></div>
-        <div class="pill score" id="rival-score" aria-label="Opponent strokes" hidden><i class="player-icon" aria-hidden="true"></i><span class="player-name" hidden></span><span id="rival-strokes">0</span></div>
       </div>
+      <template id="opponent-score"><div class="pill score" hidden><i class="player-icon" aria-hidden="true"></i><span class="player-name" hidden></span><span class="score-value">0</span></div></template>
     </header>
     <section class="course-info" aria-label="Current course">
       <span id="course-country" class="pill">Japan</span>
@@ -80,7 +80,11 @@
     <dialog id="lobby" class="result-card" aria-labelledby="lobby-title">
       <h2 id="lobby-title">Play with a friend</h2>
       <div id="lobby-actions">
-        <button id="create-room" type="button">Create room</button>
+        <div class="create-controls">
+          <label for="room-capacity">Players</label>
+          <select id="room-capacity"></select>
+          <button id="create-room" type="button">Create room</button>
+        </div>
         <form id="join-room">
           <label for="room-code">Room code</label>
           <div class="join-controls">
@@ -91,7 +95,7 @@
       </div>
       <div id="waiting-room" hidden>
         <p id="invite-code"></p>
-        <p id="waiting-copy">Share this code. The round starts when your friend joins.</p>
+        <p id="waiting-copy">Share this code. The round starts when everyone joins.</p>
       </div>
       <p id="lobby-status" role="status"></p>
       <button id="lobby-close" class="secondary" type="button">Back to practice</button>

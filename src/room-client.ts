@@ -1,11 +1,11 @@
-import type { RoomCommand, RoomMessage, RoomSnapshot, Seat } from './room-protocol';
+import { isSeat, type RoomCommand, type RoomMessage, type RoomSnapshot, type Seat } from './room-protocol';
 
 type Session = { code: string; token: string; seat: Seat };
 function storedSession(key: string): Session | null {
   try {
     const value = JSON.parse(sessionStorage.getItem(key) ?? 'null');
     return typeof value?.code === 'string' && typeof value.token === 'string'
-      && (value.seat === 0 || value.seat === 1) ? value : null;
+      && isSeat(value.seat) ? value : null;
   } catch {
     return null;
   }

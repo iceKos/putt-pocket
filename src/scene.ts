@@ -1,5 +1,5 @@
 import * as T from 'three';
-import { PLAYER_COLORS, type Seat } from './room-protocol';
+import { PLAYER_COLORS, SEATS, type Seat } from './room-protocol';
 import { ALPINE_ICE, ARENA_COLUMNS, ARENA_SAND, BALL_RADIUS, BRIDGE, BUMPERS, COURSES, CUP_RADIUS, FJORD_WIND,
   fjordWind, GATE, gateClearsBall, gateLift, groundHeight, HANOK_GATES, hanokGateLift, SHELTER_ROCKS,
   WALL_SWITCHBACKS, YUCATAN_CHUTE, type CourseLayout, type Point } from './golf';
@@ -509,13 +509,13 @@ export function makeScene(canvas: HTMLCanvasElement) {
     sun.color.setHex(index === 9 || thaiNight ? 0xc1e1ef : 0xffeac9);
     sun.intensity = thaiNight ? 0.90 : index === 9 ? 1.15 : 1.9;
     effects.clear();
-    lastBall = lastRival = null;
+    lastBall = null;
+    for (const opponent of opponentModels) opponent.previous = null;
     slingRelease = null;
     resize();
   }
-  const ballMaterials = golfBallMaterials(['#d99035', '#247ab9']);
+  const ballMaterials = golfBallMaterials(['#d99035', '#247ab9', '#9d3a44', '#31863d', '#7144ad', '#af690e']);
   let lastBall: Point | null = null;
-  let lastRival: Point | null = null;
   let lastFrame = performance.now();
   let lastTrail = 0;
   const rollAxis = new T.Vector3();
@@ -527,14 +527,17 @@ export function makeScene(canvas: HTMLCanvasElement) {
     ghost.depthWrite = false;
     return ghost;
   });
-  const rivalOutlineMaterials = PLAYER_COLORS.map((color) => new T.MeshBasicMaterial({ color }));
   const ball = mesh(scene, geometry.sphere, ballMaterials[0], 0, BALL_RADIUS, 0);
-  const opponent = mesh(scene, geometry.sphere, ballMaterials[1], 0, BALL_RADIUS, 0);
-  const opponentOutline = mesh(scene, new T.RingGeometry(0.302, 0.325, 32).rotateX(-Math.PI / 2),
-    rivalOutlineMaterials[1], 0, 0.021, 0);
-  opponentOutline.castShadow = false;
   ball.scale.setScalar(BALL_RADIUS);
-  opponent.scale.setScalar(BALL_RADIUS);
+  const slice = Math.PI * 2 / SEATS.length;
+  const opponentModels = SEATS.map((seat) => {
+    const model = mesh(scene, geometry.sphere, ballMaterials[seat], 0, BALL_RADIUS, 0);
+    model.scale.setScalar(BALL_RADIUS);
+    const marker = mesh(scene, new T.RingGeometry(0.34, 0.382, 10, 1, seat * slice, slice - 0.14)
+      .rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ color: PLAYER_COLORS[seat] }), 0, 0.023, 0);
+    marker.castShadow = false;
+    return { model, marker, previous: null as Point | null };
+  });
   const indicator = new T.MeshBasicMaterial({ color: 0x3cf0e1 });
   type Aim = { angle: number; power: number };
   const sling = new T.Group();
@@ -651,7 +654,7 @@ export function makeScene(canvas: HTMLCanvasElement) {
   }
 
   function render(position: Point, ballHeight: number, aim: Aim | null, ready: boolean,
-    seat: Seat = 0, rival?: Point & { sunk: boolean }, elapsedSeconds = 0) {
+    seat: Seat = 0, opponents: readonly (Point & { seat: Seat })[] = [], elapsedSeconds = 0) {
     const sceneryTime = reduceMotion ? 0 : elapsedSeconds;
     if (activeLayout === 0) {
       if (activeHole === 5) gate.position.y = gateLift(elapsedSeconds);
@@ -681,23 +684,32 @@ export function makeScene(canvas: HTMLCanvasElement) {
     const trail = now - lastTrail >= 52;
     if (trail) lastTrail = now;
     ball.material = ballMaterials[seat];
-    opponent.visible = Boolean(rival && !rival.sunk);
-    opponentOutline.visible = false;
-    if (rival && opponent.visible) {
-      const overlapping = ballHeight > -0.15 && Math.hypot(rival.x - position.x, rival.z - position.z) < BALL_RADIUS * 2;
-      // Indicate overlap with color and transparency while keeping the rival at its true position.
-      const surface = surfaceAt(rival.x, rival.z);
-      opponent.position.set(rival.x, BALL_RADIUS + surface, rival.z);
-      roll(opponent, lastRival, rival, (1 - seat) as Seat, trail);
-      lastRival = { ...rival };
-      opponent.material = (overlapping ? ghostMaterials : ballMaterials)[1 - seat];
-      opponent.castShadow = !overlapping;
-      if (overlapping) {
-        opponentOutline.material = rivalOutlineMaterials[1 - seat];
-        opponentOutline.position.set(rival.x, surface + 0.021, rival.z);
-        opponentOutline.visible = true;
+    for (const [otherSeat, visual] of opponentModels.entries()) {
+      const { model, marker } = visual;
+      const rival = opponents.find((player) => player.seat === otherSeat);
+      model.visible = marker.visible = false;
+      if (!rival) {
+        visual.previous = null;
+        continue;
       }
-    } else lastRival = null;
+      const distance = ballHeight > -0.15 ? Math.hypot(rival.x - position.x, rival.z - position.z) : Infinity;
+      const nearRival = opponents.some((other) => other.seat !== otherSeat
+        && Math.hypot(other.x - rival.x, other.z - rival.z) < BALL_RADIUS * 2);
+      const sharedTee = opponents.some((other) => other.seat < otherSeat
+        && Math.hypot(other.x - rival.x, other.z - rival.z) < 0.10);
+      const overlapping = nearRival || distance < BALL_RADIUS * 2;
+      const surface = surfaceAt(rival.x, rival.z);
+      model.visible = distance >= 0.10 && !sharedTee;
+      model.position.set(rival.x, BALL_RADIUS + surface, rival.z);
+      roll(model, visual.previous, rival, rival.seat, trail && model.visible);
+      visual.previous = { x: rival.x, z: rival.z };
+      model.material = (overlapping ? ghostMaterials : ballMaterials)[rival.seat];
+      model.castShadow = !overlapping;
+      if (overlapping) {
+        marker.position.set(rival.x, surface + 0.023, rival.z);
+        marker.visible = true;
+      }
+    }
     const surface = surfaceAt(position.x, position.z);
     roll(ball, lastBall, position, seat, trail && ballHeight >= BALL_RADIUS);
     lastBall = { ...position };

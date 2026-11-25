@@ -75,6 +75,19 @@ button:hover { background: #91fff2; }
 }
 
 .scores { display: flex; justify-self: end; gap: 6px; }
+.score.offline { opacity: .62; }
+.group-match .hud { align-items: start; }
+.group-match .scores {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-width: 100%; gap: 5px;
+}
+.group-match .scores .score {
+  min-width: 0; width: 100%; justify-content: space-between;
+  gap: 5px; padding: 5px 8px; font-size: 16px;
+}
+.group-match .player-name { max-width: 8ch; font-size: 12px; }
+.group-match .scores .player-icon { width: 16px; height: 16px; }
+.group-match .room-tools, .group-match .course-info { top: calc(max(env(safe-area-inset-top), 12px) + 88px); }
 .room-tools {
   position: absolute; top: calc(max(env(safe-area-inset-top), 12px) + clamp(54px, 5vw, 77px));
   right: clamp(10px, 2vw, 28px); z-index: 1; display: flex; align-items: center; gap: 6px;
@@ -87,6 +100,13 @@ button:hover { background: #91fff2; }
 #lobby::backdrop { background: #18261d74; }
 #lobby h2 { font-size: clamp(25px, 5vw, 36px); }
 #lobby button { margin-top: 12px; }
+.create-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; }
+.create-controls label { font-size: 13px; }
+#room-capacity {
+  color-scheme: dark; font: inherit; color: inherit; background: #17241e;
+  border: 1px solid #fffdf073; border-radius: 12px; padding: 8px;
+}
+#lobby .create-controls button { margin: 0; }
 #join-room { margin-top: 22px; }
 #join-room label { display: block; margin-bottom: 6px; font-size: 13px; }
 .join-controls { display: flex; justify-content: center; gap: 7px; }
@@ -102,7 +122,7 @@ button:hover { background: #91fff2; }
 .secondary:hover { background: #4d6050; }
 #standings {
   list-style: none; padding: 0; margin: 14px 0 0;
-  font-variant-numeric: tabular-nums; display: grid; gap: 6px;
+  font-variant-numeric: tabular-nums; display: grid; gap: 6px; max-height: min(51dvh, 420px); overflow: auto;
 }
 #standings li { background: #324037; border-radius: 8px; padding: 7px 11px; }
 .standing-player { display: flex; align-items: center; justify-content: center; gap: 6px; overflow-wrap: anywhere; }
@@ -113,6 +133,10 @@ button:hover { background: #91fff2; }
   .platform-match .scores { grid-column: 1 / -1; }
   .platform-match .score { padding-block: 5px; }
   .platform-match .room-tools, .platform-match .course-info { top: calc(max(env(safe-area-inset-top), 12px) + 82px); }
+  .group-match .hud { grid-template-columns: 1fr auto; }
+  .group-match .timer { justify-self: end; }
+  .group-match .scores { grid-column: 1 / -1; }
+  .group-match .room-tools, .group-match .course-info { top: calc(max(env(safe-area-inset-top), 12px) + 122px); }
 }
 @media (max-width: 600px) {
   .scores { gap: 3px; }
