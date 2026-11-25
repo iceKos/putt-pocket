@@ -1,5 +1,5 @@
 import * as T from 'three';
-import { BRIDGE, MARKET_BASKETS } from './golf';
+import { BRIDGE, MARKET_BASKETS, type CourseLayout } from './golf';
 import { alternateCourses } from './alternate-courses';
 
 export const palettes = [
@@ -178,6 +178,14 @@ function moonBridge(parent: T.Group) {
   }
 }
 
+export function decorateKyotoPond(parent: T.Group, layout: CourseLayout) {
+  // Torii Zigzag extends its fairway over the original garden's pond.
+  const garden = place(parent, 0, layout === 1 ? 4.3 : 0, 0);
+  const animateKoi = koiPond(garden);
+  moonBridge(garden);
+  return animateKoi;
+}
+
 function japan(parent: T.Group) {
   torii(parent, -2.35, -4.96, 0.96);
   kyotoPagoda(parent, 3.05, -5.05);
@@ -188,8 +196,6 @@ function japan(parent: T.Group) {
   for (const [x, z, scale] of [[-6.02, -1.17, 0.91], [5.78, 0.34, 0.92], [-4.50, 3.95, 0.73], [0.80, 3.76, 0.83]]) {
     stoneLantern(parent, x, z, scale);
   }
-  const animateKoi = koiPond(parent);
-  moonBridge(parent);
   for (let i = 0; i < 7; i++) {
     const x = -3.78 + i * 0.59;
     form(parent, cylinder, i % 2 ? 0x9a978a : 0xb4afa2, x, -0.269, 4.24 + Math.sin(i * 0.66) * 0.27,
@@ -199,7 +205,6 @@ function japan(parent: T.Group) {
     stone(parent, 0x789760, x, -0.16, z, 0.47, 0.21, 0.34);
     stone(parent, 0x8d8f80, x + 0.36, -0.20, z - 0.26, 0.24, 0.14, 0.26);
   }
-  return animateKoi;
 }
 
 function woodSign(parent: T.Group, text: string, x: number, y: number, z: number,

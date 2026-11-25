@@ -48,6 +48,7 @@ export async function startGame(platformSession: string | null, launchToken: str
   const liveCode = get('live-code');
   const waitingRoom = get('waiting-room');
   const standings = get('standings');
+  const standingRows = get('standing-rows');
   const myScore = get('my-score');
   const scores = get('scores');
   const template = get<HTMLTemplateElement>('opponent-score');
@@ -245,24 +246,29 @@ export async function startGame(platformSession: string | null, launchToken: str
     const ranked = rankPlayers(state.players);
     const leaders = ranked.filter(({ rank }) => rank === 1);
     const isLeader = leaders.some(({ player }) => player.seat === seat);
-    get('result-context').textContent = `${COURSES.length} holes · Final score`;
+    get('result-context').textContent = `${COURSES.length} holes · Final scores`;
     get('result-title').textContent = !isLeader ? 'Round complete' : leaders.length > 1 ? 'Tie game!' : 'You win!';
     get('result-score').textContent = 'Fewest total strokes wins';
-    standings.replaceChildren(...ranked.map(({ player, rank, score }) => {
-      const row = document.createElement('li');
-      row.style.color = PLAYER_COLORS[player.seat];
+    standingRows.replaceChildren(...ranked.map(({ player, rank, score }) => {
+      const row = document.createElement('tr');
+      const rankCell = row.insertCell();
+      rankCell.textContent = String(rank);
+      const playerCell = row.insertCell();
       const heading = document.createElement('div');
       heading.className = 'standing-player';
+      heading.style.color = PLAYER_COLORS[player.seat];
       const icon = document.createElement('i');
       icon.className = 'player-icon';
       icon.setAttribute('aria-hidden', 'true');
       setPlayerIcon(icon, player.seat, player.profile?.avatar);
       const label = document.createElement('span');
-      label.textContent = `${rank}. ${playerName(player)}${player.seat === seat ? ' (you)' : ''} · ${score} strokes${player.forfeited ? ' · Left match' : ''}`;
+      label.textContent = `${playerName(player)}${player.seat === seat ? ' (you)' : ''}`;
       heading.append(icon, label);
       const detail = document.createElement('small');
-      detail.textContent = 'By hole: ' + player.scores.join(' + ');
-      row.append(heading, detail);
+      detail.textContent = `${player.forfeited ? 'Left match · ' : ''}By hole ${player.scores.join(' · ')}`;
+      playerCell.append(heading, detail);
+      const scoreCell = row.insertCell();
+      scoreCell.textContent = String(score);
       return row;
     }));
     standings.hidden = false;

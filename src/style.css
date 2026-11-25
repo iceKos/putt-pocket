@@ -121,11 +121,18 @@ button:hover { background: #91fff2; }
 .secondary { background: #3b4a3f; color: #fffdf0; }
 .secondary:hover { background: #4d6050; }
 #standings {
-  list-style: none; padding: 0; margin: 14px 0 0;
-  font-variant-numeric: tabular-nums; display: grid; gap: 6px; max-height: min(51dvh, 420px); overflow: auto;
+  width: min(390px, 100%); margin: 14px auto 0;
+  font-variant-numeric: tabular-nums; max-height: clamp(84px, calc(100dvh - 275px), 460px); overflow: auto;
 }
-#standings li { background: #324037; border-radius: 8px; padding: 7px 11px; }
-.standing-player { display: flex; align-items: center; justify-content: center; gap: 6px; overflow-wrap: anywhere; }
+#standings table { width: 100%; border-collapse: separate; border-spacing: 0 4px; text-align: start; }
+#standings th { padding: 5px 7px; color: #d0dbca; font-size: 12px; }
+#standings th:first-child, #standings td:first-child { text-align: center; }
+#standings th:last-child, #standings td:last-child { text-align: end; }
+#standings td { background: #324037; padding: 7px; }
+#standings td:first-child { border-radius: 8px 0 0 8px; }
+#standings td:last-child { border-radius: 0 8px 8px 0; color: var(--yellow); font-size: 22px; font-weight: 800; }
+.standing-player { display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+.standing-player .player-icon { flex-shrink: 0; }
 #result .result-card { max-width: 100%; }
 @media (max-width: 900px) {
   .platform-match .hud { grid-template-columns: 1fr auto; }
@@ -163,7 +170,7 @@ button:hover { background: #91fff2; }
 #turnover h2 { font-size: clamp(24px, 5vw, 42px); }
 #turnover-scores { font-size: 14px; line-height: 1.6; }
 #turnover-count { color: var(--yellow); margin-top: 10px; }
-#standings small { display: block; color: #d0dbca; margin-top: 3px; }
+#standings small { display: block; color: #d0dbca; margin-top: 3px; font-size: 11px; }
 @media (max-width: 455px) {
   .course-info { top: calc(max(env(safe-area-inset-top), 12px) + 48px); }
   .course-info .pill, #practice-hole, .room-tools button, .room-tools .pill { padding-inline: 7px; font-size: 11px; }

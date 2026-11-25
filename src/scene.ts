@@ -3,7 +3,8 @@ import { PLAYER_COLORS, SEATS, type Seat } from './room-protocol';
 import { ALPINE_ICE, ARENA_COLUMNS, ARENA_SAND, BALL_RADIUS, BRIDGE, BUMPERS, COURSES, CUP_RADIUS, FJORD_WIND,
   fjordWind, GATE, gateClearsBall, gateLift, groundHeight, HANOK_GATES, hanokGateLift, SHELTER_ROCKS,
   WALL_SWITCHBACKS, YUCATAN_CHUTE, type CourseLayout, type Point } from './golf';
-import { decorateCourse, decorateFloatingMarketPlayfield, decorateLoyKrathong, decorateSongkran, palettes } from './themes';
+import { decorateCourse, decorateFloatingMarketPlayfield, decorateKyotoPond, decorateLoyKrathong, decorateSongkran,
+  palettes } from './themes';
 import { golfBallMaterials, makeEffects, type Burst } from './fx';
 import { flyCountryFlag } from './flags';
 import { decorateAlternate } from './alternate-scene';
@@ -476,6 +477,7 @@ export function makeScene(canvas: HTMLCanvasElement) {
   const boards = courses.map(course);
   const animateScenery = courses.map(decorateCourse);
   const animateAlternate = boards.map(({ variants }, index) => decorateAlternate(variants[1], index));
+  const animateKyotoPond = [decorateKyotoPond(boards[0].variants[0], 0), decorateKyotoPond(boards[0].variants[1], 1)] as const;
   const animateBridge = timberBridge(boards[1].variants[0]);
   decorateFloatingMarketPlayfield(boards[1].variants[0]);
   const animateThaiFestival = [decorateSongkran(boards[1].variants[0]), decorateLoyKrathong(boards[1].variants[1])] as const;
@@ -664,6 +666,7 @@ export function makeScene(canvas: HTMLCanvasElement) {
     } else {
       animateAlternate[activeHole](elapsedSeconds);
     }
+    if (activeHole === 0) animateKyotoPond[activeLayout](sceneryTime);
     if (activeHole === 1) animateThaiFestival[activeLayout](sceneryTime);
     animateScenery[activeHole]?.(sceneryTime);
     const now = performance.now();

@@ -126,7 +126,12 @@
         <p id="result-context">HOLE 1 · KYOTO STONE GARDEN</p>
         <h2 id="result-title"></h2>
         <p id="result-score"></p>
-        <ol id="standings" aria-label="Final standings" hidden></ol>
+        <div id="standings" hidden>
+          <table aria-label="Final standings">
+            <thead><tr><th scope="col">Rank</th><th scope="col">Player</th><th scope="col">Total strokes</th></tr></thead>
+            <tbody id="standing-rows"></tbody>
+          </table>
+        </div>
         <button id="replay" type="button">Play again</button>
       </div>
     </section>
