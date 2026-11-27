@@ -19,6 +19,12 @@ if (dev) {
 } else {
   http.on('request', async (req, res) => {
     const pathname = (req.url ?? '').split('?')[0];
+    if (pathname === '/healthz' && (req.method === 'GET' || req.method === 'HEAD')) {
+      const ready = await stat(resolve(dist, 'index.html')).then(info => info.isFile()).catch(() => false);
+      res.writeHead(ready ? 200 : 503, { 'Content-Type': 'application/json' });
+      res.end(req.method === 'GET' ? JSON.stringify({ ok: ready }) : undefined);
+      return;
+    }
     const relative = pathname === '/' ? 'index.html' : /^\/assets\/[\w.-]+$/.test(pathname) ? pathname.slice(1) : '';
     if (!relative || (req.method !== 'GET' && req.method !== 'HEAD')) {
       res.writeHead(404).end();

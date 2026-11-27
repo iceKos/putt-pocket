@@ -43,7 +43,7 @@ export function makeRoomClient(platformSession: string | null, events: {
     clearTimeout(retry);
     clearTimeout(connectTimeout);
     socket?.close();
-    const endpoint = new URL('/ws', location.href);
+    const endpoint = new URL('./ws', location.href);
     endpoint.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const connection = new WebSocket(endpoint);
     socket = connection;
